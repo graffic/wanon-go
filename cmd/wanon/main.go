@@ -12,6 +12,7 @@ import (
 	"github.com/graffic/wanon-go/internal/bot"
 	"github.com/graffic/wanon-go/internal/cache"
 	"github.com/graffic/wanon-go/internal/config"
+	"github.com/graffic/wanon-go/internal/quotes"
 	"github.com/graffic/wanon-go/internal/storage"
 	"github.com/graffic/wanon-go/internal/telegram"
 	"golang.org/x/sync/errgroup"
@@ -116,12 +117,26 @@ func runServer(cfg *config.Config) error {
 
 	// Component 2: Dispatcher
 	dispatcher := bot.NewDispatcher(updatesCh, cfg.AllowedChatIDs)
+
+	// Register cache middleware to process all messages through cache
+	cacheService := cache.NewService(db.DB)
+	cacheMiddleware := cache.NewMiddleware(cacheService, slog.Default())
+	dispatcher.AddUpdateHandler(cacheMiddleware.HandleUpdate)
+
+	// Register quote command handlers
+	// Create adapter for telegram client to match quotes.TelegramClient interface
+	quotesClient := quotes.NewTelegramClientAdapter(telegramClient)
+	addQuoteHandler := quotes.NewAddQuoteHandler(db.DB, quotesClient)
+	rquoteHandler := quotes.NewRQuoteHandler(db.DB, quotesClient)
+
+	dispatcher.Register("addquote", quotes.NewCommandAdapter(addQuoteHandler))
+	dispatcher.Register("rquote", quotes.NewCommandAdapter(rquoteHandler))
+
 	g.Go(func() error {
 		return dispatcher.Start(ctx)
 	})
 
 	// Component 3: Cache cleaner
-	cacheService := cache.NewService(db.DB)
 	cleanerConfig := cache.Config{
 		CleanInterval: cfg.Cache.CleanInterval,
 		KeepDuration:  cfg.Cache.KeepDuration,
