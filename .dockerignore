@@ -1,52 +1,20 @@
-# Git
-.git
-.gitignore
+# Ignore everything
+**
 
-# Documentation
-*.md
-LICENSE
+# Allow Go module files
+!go.mod
+!go.sum
 
-# IDE
-.idea
-.vscode
-*.swp
-*.swo
-*~
+# Allow source code
+!cmd/**
+!internal/**
 
-# OS
-.DS_Store
-Thumbs.db
+# Allow migrations
+!migrations/**
 
-# Build artifacts
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-wanon
+# Allow config (but not local)
+!config/*.yaml
+!config/*.yml
 
-# Test
-*_test.go
-*.test
-*.out
-coverage.html
-coverage.out
-
-# Local config
-config/local*.yaml
-.env
-.env.*
-
-# Docker
-Dockerfile
-docker-compose*.yml
-.dockerignore
-
-# Scripts (except entrypoint)
-scripts/*
+# Allow scripts (entrypoint only)
 !scripts/entrypoint.sh
-
-# Misc
-Makefile
-README.md
-CHANGELOG.md

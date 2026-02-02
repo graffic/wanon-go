@@ -39,12 +39,16 @@ func TestStore_StoresQuoteWithEntries(t *testing.T) {
 	// Verify quote was created
 	assert.NotZero(t, quote.ID)
 	assert.Equal(t, int64(-100123), quote.ChatID)
-	assert.Equal(t, datatypes.JSON(creatorJSON), quote.Creator)
+	// Compare JSON by unmarshaling both to compare the data
+	var expectedCreator, actualCreator map[string]interface{}
+	json.Unmarshal(creatorJSON, &expectedCreator)
+	json.Unmarshal(quote.Creator, &actualCreator)
+	assert.Equal(t, expectedCreator, actualCreator)
 	assert.WithinDuration(t, time.Now(), quote.CreatedAt, time.Second)
 
 	// Verify entries were stored
 	var storedEntries []QuoteEntry
-	err = db.DB.Where("quote_id = ?", quote.ID).Order("`order`").Find(&storedEntries).Error
+	err = db.DB.Where("quote_id = ?", quote.ID).Order("\"order\"").Find(&storedEntries).Error
 	require.NoError(t, err)
 	assert.Len(t, storedEntries, 3)
 

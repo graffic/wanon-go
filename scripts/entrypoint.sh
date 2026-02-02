@@ -2,27 +2,15 @@
 set -e
 
 # Entrypoint script for Wanon Telegram Bot
-# Handles migration and server startup
+# Runs migrations and then starts the server
 
-# Default to "server" if no command provided
-if [ $# -eq 0 ]; then
-    set -- server
+echo "Running database migrations..."
+if [ -n "$DATABASE_URL" ]; then
+    tern migrate --conn-string "$DATABASE_URL" --migrations /app/migrations
+else
+    echo "ERROR: DATABASE_URL not set
+    exit 1
 fi
 
-COMMAND=$1
-shift
-
-case "$COMMAND" in
-    migrate)
-        echo "Running database migrations..."
-        exec /app/wanon migrate "$@"
-        ;;
-    server)
-        echo "Starting Wanon server..."
-        exec /app/wanon server "$@"
-        ;;
-    *)
-        # Pass through any other command
-        exec /app/wanon "$COMMAND" "$@"
-        ;;
-esac
+echo "Starting Wanon server..."
+exec /app/wanon server "$@"

@@ -45,32 +45,30 @@ mise exec -- golangci-lint run ./...
 
 ### Database Setup for Tests
 
-Tests in `internal/quotes/` and `internal/cache/` require PostgreSQL:
+Tests in `internal/quotes/` and `internal/cache/` use **testcontainers-go** to automatically spin up PostgreSQL containers. No manual database setup is required!
 
+The test helper in `internal/testutils/db.go` will:
+1. Start a PostgreSQL container automatically
+2. Run migrations
+3. Clean up the container after tests complete
+
+**Requirements:**
+- Docker must be running
+- No environment variables needed for database tests
+
+**Legacy manual setup (if needed):**
 ```bash
-# Start PostgreSQL (using Docker)
-docker run -d \
-  --name wanon-postgres \
-  -e POSTGRES_USER=wanon_test \
-  -e POSTGRES_PASSWORD=wanon_test \
-  -e POSTGRES_DB=wanon_test \
-  -p 5432:5432 \
-  postgres:15-alpine
-
-# Run migrations
-mise exec -- go run ./cmd/wanon migrate
-```
-
-### Environment Variables
-
-```bash
-# Required for tests with database
+# Only needed if you want to run tests against a manually managed database
 export TEST_DB_HOST=localhost
 export TEST_DB_PORT=5432
 export TEST_DB_USER=wanon_test
 export TEST_DB_PASSWORD=wanon_test
 export TEST_DB_NAME=wanon_test
+```
 
+### Environment Variables
+
+```bash
 # Application configuration
 export WANON_TELEGRAM_TOKEN=your_bot_token
 export WANON_ALLOWED_CHAT_IDS=-1001234567890,-1009876543210

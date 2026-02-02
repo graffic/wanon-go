@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/graffic/wanon-go/internal/testutils"
@@ -151,10 +152,12 @@ func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 	require.GreaterOrEqual(t, len(sentMessages), 5)
 
 	// Check that at least one of each quote was returned
+	// Format is: "#<id>\n<author>: <text>\n📅 <date>"
 	var foundQuotes []string
 	for _, sent := range sentMessages {
 		for _, q := range quotes {
-			if sent == fmt.Sprintf("%s: %s", q.author, q.text) {
+			// Check if the sent message contains the author and text
+			if strings.Contains(sent, fmt.Sprintf("%s: %s", q.author, q.text)) {
 				foundQuotes = append(foundQuotes, q.text)
 				break
 			}

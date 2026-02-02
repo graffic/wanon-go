@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 
@@ -42,14 +43,12 @@ func run() error {
 
 	// Execute command
 	switch cmd {
-	case "migrate":
-		return runMigrations(cfg)
 	case "server":
 		return runServer(cfg)
 	default:
-		// Default: auto-migrate then run server
+		// Default: run migrations and server
 		if err := runMigrations(cfg); err != nil {
-			return fmt.Errorf("migration failed: %w", err)
+			return err
 		}
 		return runServer(cfg)
 	}
@@ -65,14 +64,23 @@ func parseCommand() string {
 func runMigrations(cfg *config.Config) error {
 	slog.Info("running database migrations")
 
-	db, err := storage.New(&cfg.Database)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	defer db.Close()
+	// Build connection string from config
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.Database,
+		cfg.Database.SSLMode,
+	)
 
-	if err := storage.RunMigrations(db.DB); err != nil {
-		return fmt.Errorf("migration failed: %w", err)
+	// Run tern migrate using full path
+	cmd := exec.Command("tern", "migrate", "--conn-string", connStr, "--migrations", "./migrations")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	slog.Info("migrations completed successfully")

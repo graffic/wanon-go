@@ -1,8 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates
+FROM golang:1.25 AS builder
 
 # Set working directory
 WORKDIR /build
@@ -22,41 +19,23 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o /build/wanon \
     ./cmd/wanon
 
-# Runtime stage
-FROM alpine:latest
+RUN CGO_ENABLED=0 go install -v github.com/jackc/tern/v2@latest
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates
-
-# Create non-root user
-RUN addgroup -g 1000 -S wanon && \
-    adduser -u 1000 -S wanon -G wanon
+# Runtime stage - distroless
+FROM gcr.io/distroless/static-debian12
 
 # Set working directory
 WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /build/wanon /app/wanon
+COPY --from=builder /go/bin/tern /usr/bin/tern
 
-# Copy entrypoint script
-COPY scripts/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
-# Change ownership to non-root user
-RUN chown -R wanon:wanon /app
-
-# Switch to non-root user
-USER wanon
+# Copy migrations
+COPY migrations /app/migrations
 
 # Expose port (if needed for health checks or metrics)
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD pgrep wanon || exit 1
-
-# Set entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
-
-# Default command (can be overridden)
-CMD ["server"]
+# Run the binary directly
+ENTRYPOINT ["/app/wanon"]

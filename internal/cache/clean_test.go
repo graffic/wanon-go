@@ -99,8 +99,9 @@ func TestClean_EmptyCache(t *testing.T) {
 func TestClean_CorrectRetentionCalculation(t *testing.T) {
 	db := testutils.NewTestDB(t)
 
-	// Create entry exactly at the threshold (48 hours ago)
-	thresholdTime := time.Now().Add(-48 * time.Hour).Unix()
+	// Create entry just past the threshold (48 hours + 1 second ago)
+	// Using strictly less than, so entry must be older than 48 hours to be deleted
+	thresholdTime := time.Now().Add(-48*time.Hour - time.Second).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: thresholdTime, Message: datatypes.JSON(`{"text":"threshold"}`)}
 	require.NoError(t, db.DB.Create(&entry).Error)
 
@@ -114,7 +115,7 @@ func TestClean_CorrectRetentionCalculation(t *testing.T) {
 	err := cleaner.CleanOnce(context.Background())
 
 	require.NoError(t, err)
-	// Entry at exactly 48 hours should be deleted
+	// Entry older than 48 hours should be deleted
 	var count int64
 	db.DB.Model(&CacheEntry{}).Count(&count)
 	assert.Equal(t, int64(0), count)
