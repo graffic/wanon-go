@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "result": {
+    "message_id": 100,
+    "from": {
+      "id": 999999,
+      "is_bot": true,
+      "first_name": "Wanon Bot",
+      "username": "wanon_bot"
+    },
+    "chat": {
+      "id": -1001234567890,
+      "title": "Test Group",
+      "type": "supergroup"
+    },
+      "date": 1609459300,
+      "text": "Quote added successfully!"
+  }
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "update_id": 4,
+    "message": {
+      "message_id": 10,
+      "from": {
+        "id": 123456,
+        "is_bot": false,
+        "first_name": "Test",
+        "username": "testuser"
+      },
+      "chat": {
+        "id": -1001234567890,
+        "title": "Test Group",
+        "type": "supergroup"
+      },
+      "date": 1609459200,
+      "text": "/addquote",
+      "entities": [
+        {
+          "offset": 0,
+          "length": 9,
+          "type": "bot_command"
+        }
+      ],
+      "reply_to_message": {
+        "message_id": 5,
+        "from": {
+          "id": 789012,
+          "is_bot": false,
+          "first_name": "Another",
+          "username": "anotheruser"
+        },
+        "chat": {
+          "id": -1001234567890,
+          "title": "Test Group",
+          "type": "supergroup"
+        },
+        "date": 1609459100,
+        "text": "This is the message to quote"
+      }
+    }
+  }
+]

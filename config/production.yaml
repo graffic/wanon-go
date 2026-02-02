@@ -1,0 +1,19 @@
+# Production configuration for Wanon
+# Use environment variables for sensitive values
+environment: production
+
+telegram:
+  token: ${WANON_TELEGRAM_TOKEN}
+  webhook: ""
+
+database:
+  host: ${WANON_DATABASE_HOST}
+  port: ${WANON_DATABASE_PORT}
+  user: ${WANON_DATABASE_USER}
+  password: ${WANON_DATABASE_PASSWORD}
+  database: ${WANON_DATABASE_DATABASE}
+  sslmode: ${WANON_DATABASE_SSLMODE}
+
+cache:
+  clean_interval: 10m
+  keep_duration: 48h

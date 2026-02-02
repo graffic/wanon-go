@@ -1,0 +1,28 @@
+[
+  {
+    "update_id": 5,
+    "message": {
+      "message_id": 20,
+      "from": {
+        "id": 123456,
+        "is_bot": false,
+        "first_name": "Test",
+        "username": "testuser"
+      },
+      "chat": {
+        "id": -1001234567890,
+        "title": "Test Group",
+        "type": "supergroup"
+      },
+      "date": 1609459200,
+      "text": "/rquote",
+      "entities": [
+        {
+          "offset": 0,
+          "length": 7,
+          "type": "bot_command"
+        }
+      ]
+    }
+  }
+]

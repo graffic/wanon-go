@@ -1,0 +1,22 @@
+[
+  {
+    "update_id": 3,
+    "edited_message": {
+      "message_id": 1,
+      "from": {
+        "id": 123456,
+        "is_bot": false,
+        "first_name": "Test",
+        "username": "testuser"
+      },
+      "chat": {
+        "id": -1001234567890,
+        "title": "Test Group",
+        "type": "supergroup"
+      },
+      "date": 1609459200,
+      "edit_date": 1609459800,
+      "text": "Hello, this is an edited test message"
+    }
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "update_id": 1,
+    "message": {
+      "message_id": 1,
+      "from": {
+        "id": 123456,
+        "is_bot": false,
+        "first_name": "Test",
+        "username": "testuser"
+      },
+      "chat": {
+        "id": -1001234567890,
+        "title": "Test Group",
+        "type": "supergroup"
+      },
+      "date": 1609459200,
+      "text": "Hello, this is a test message"
+    }
+  },
+  {
+    "update_id": 2,
+    "message": {
+      "message_id": 2,
+      "from": {
+        "id": 789012,
+        "is_bot": false,
+        "first_name": "Another",
+        "username": "anotheruser"
+      },
+      "chat": {
+        "id": -1001234567890,
+        "title": "Test Group",
+        "type": "supergroup"
+      },
+      "date": 1609459260,
+      "reply_to_message": {
+        "message_id": 1,
+        "from": {
+          "id": 123456,
+          "is_bot": false,
+          "first_name": "Test",
+          "username": "testuser"
+        },
+        "chat": {
+          "id": -1001234567890,
+          "title": "Test Group",
+          "type": "supergroup"
+        },
+        "date": 1609459200,
+        "text": "Hello, this is a test message"
+      },
+      "text": "This is a reply"
+    }
+  }
+]

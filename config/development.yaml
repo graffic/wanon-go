@@ -1,0 +1,18 @@
+# Development configuration for Wanon
+environment: development
+
+telegram:
+  token: ${WANON_TELEGRAM_TOKEN}
+  webhook: ""
+
+database:
+  host: localhost
+  port: 5432
+  user: wanon
+  password: wanon
+  database: wanon
+  sslmode: disable
+
+cache:
+  clean_interval: 10m
+  keep_duration: 48h

@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+LICENSE
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+wanon
+
+# Test
+*_test.go
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Local config
+config/local*.yaml
+.env
+.env.*
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Scripts (except entrypoint)
+scripts/*
+!scripts/entrypoint.sh
+
+# Misc
+Makefile
+README.md
+CHANGELOG.md

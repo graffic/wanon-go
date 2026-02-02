@@ -1,0 +1,16 @@
+environment: prod
+
+telegram:
+  token: ""
+  webhook: ""
+
+database:
+  host: localhost
+  port: 5432
+  user: wanon
+  password: ""
+  database: wanon_prod
+  sslmode: require
+
+cache:
+  max_age: 86400
