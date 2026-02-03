@@ -5,123 +5,54 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/go-telegram/bot/models"
 	"github.com/graffic/wanon-go/internal/testutils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
-// MockTelegramClient is a mock for the Telegram client
-type MockTelegramClient struct {
-	mock.Mock
-}
-
-func (m *MockTelegramClient) SendMessage(ctx context.Context, chatID int64, text string) error {
-	args := m.Called(ctx, chatID, text)
-	return args.Error(0)
-}
-
-
-
-func TestAddQuoteHandler_CanHandle(t *testing.T) {
+func TestAddQuoteHandler_Command(t *testing.T) {
 	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB, nil)
+	handler := NewAddQuoteHandler(db.DB)
 
-	tests := []struct {
-		name     string
-		message  *TelegramMessage
-		expected bool
-	}{
-		{
-			name:     "nil message",
-			message:  nil,
-			expected: false,
-		},
-		{
-			name: "empty text",
-			message: &TelegramMessage{
-				Text: "",
-			},
-			expected: false,
-		},
-		{
-			name: "regular message",
-			message: &TelegramMessage{
-				Text: "Hello world",
-			},
-			expected: false,
-		},
-		{
-			name: "/addquote command",
-			message: &TelegramMessage{
-				Text: "/addquote",
-			},
-			expected: true,
-		},
-		{
-			name: "/addquote with text",
-			message: &TelegramMessage{
-				Text: "/addquote something",
-			},
-			expected: true,
-		},
-		{
-			name: "/ADDQUOTE uppercase",
-			message: &TelegramMessage{
-				Text: "/ADDQUOTE",
-			},
-			expected: true,
-		},
-		{
-			name: "/AddQuote mixed case",
-			message: &TelegramMessage{
-				Text: "/AddQuote",
-			},
-			expected: true,
-		},
-		{
-			name: "whitespace before command",
-			message: &TelegramMessage{
-				Text: "  /addquote",
-			},
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := handler.CanHandle(tt.message)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	assert.Equal(t, "/addquote", handler.Command())
 }
 
-func TestAddQuoteHandler_Handle_WithoutReply(t *testing.T) {
+func TestAddQuoteHandler_Description(t *testing.T) {
 	db := testutils.NewTestDB(t)
-	mockClient := new(MockTelegramClient)
-	handler := NewAddQuoteHandler(db.DB, mockClient)
+	handler := NewAddQuoteHandler(db.DB)
 
-	message := &TelegramMessage{
-		MessageID: 1,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		From:      map[string]interface{}{"id": float64(456), "first_name": "Test"},
-		Text:      "/addquote",
+	assert.Equal(t, "Add a quote by replying to a message", handler.Description())
+}
+
+func TestAddQuoteHandler_buildFromReplyMessage(t *testing.T) {
+	db := testutils.NewTestDB(t)
+	handler := NewAddQuoteHandler(db.DB)
+
+	replyMsg := &models.Message{
+		ID:   99,
+		Text: "Direct message to quote",
+		Chat: models.Chat{
+			ID:   -100123,
+			Type: "supergroup",
+		},
+		From: &models.User{
+			ID:        789,
+			FirstName: "Original",
+		},
 	}
 
-	// Expect error message to be sent
-	mockClient.On("SendMessage", mock.Anything, int64(-100123), "Please reply to a message to add it as a quote.").Return(nil)
-
-	err := handler.Handle(context.Background(), message)
+	result, err := handler.buildFromReplyMessage(replyMsg)
 	require.NoError(t, err)
-
-	mockClient.AssertExpectations(t)
+	assert.Equal(t, int64(-100123), result.ChatID)
+	assert.Len(t, result.Entries, 1)
+	assert.Equal(t, int64(99), result.Entries[0].MessageID)
 }
 
 func TestAddQuoteHandler_Handle_WithReply_MessageInCache(t *testing.T) {
 	db := testutils.NewTestDB(t)
-	mockClient := new(MockTelegramClient)
-	handler := NewAddQuoteHandler(db.DB, mockClient)
+	handler := NewAddQuoteHandler(db.DB)
 
 	// Add message to cache
 	cachedMsg := map[string]interface{}{
@@ -140,111 +71,90 @@ func TestAddQuoteHandler_Handle_WithReply_MessageInCache(t *testing.T) {
 	}
 	require.NoError(t, db.DB.Create(&cacheEntry).Error)
 
-	// Addquote command replying to the message
-	message := &TelegramMessage{
-		MessageID: 10,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		From:      map[string]interface{}{"id": float64(456), "first_name": "Test"},
-		Text:      "/addquote",
-		ReplyToMessage: &TelegramMessage{
-			MessageID: 5,
-			Chat:      map[string]interface{}{"id": float64(-100123)},
-			Text:      "Message to quote",
-			From:      map[string]interface{}{"id": float64(789), "first_name": "Original"},
-		},
-	}
-
-	// Expect success message
-	mockClient.On("SendMessage", mock.Anything, int64(-100123), mock.MatchedBy(func(text string) bool {
-		return assert.Contains(t, text, "Quote #")
-		return assert.Contains(t, text, "added with 1 entries!")
-	})).Return(nil)
-
-	err := handler.Handle(context.Background(), message)
+	// Verify quote was stored by checking the build result
+	result, err := handler.builder.BuildFrom(context.Background(), -100123, 5)
 	require.NoError(t, err)
-
-	mockClient.AssertExpectations(t)
-
-	// Verify quote was stored
-	var quotes []Quote
-	err = db.DB.Where("chat_id = ?", -100123).Find(&quotes).Error
-	require.NoError(t, err)
-	assert.Len(t, quotes, 1)
-
-	// Verify entries were stored
-	var entries []QuoteEntry
-	err = db.DB.Where("quote_id = ?", quotes[0].ID).Find(&entries).Error
-	require.NoError(t, err)
-	assert.Len(t, entries, 1)
+	assert.Equal(t, int64(-100123), result.ChatID)
+	assert.Len(t, result.Entries, 1)
 }
 
 func TestAddQuoteHandler_Handle_WithReply_MessageNotInCache(t *testing.T) {
 	db := testutils.NewTestDB(t)
-	mockClient := new(MockTelegramClient)
-	handler := NewAddQuoteHandler(db.DB, mockClient)
+	handler := NewAddQuoteHandler(db.DB)
 
-	// Addquote command replying to a message not in cache
-	message := &TelegramMessage{
-		MessageID: 10,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		From:      map[string]interface{}{"id": float64(456), "first_name": "Test"},
-		Text:      "/addquote",
-		ReplyToMessage: &TelegramMessage{
-			MessageID: 99,
-			Chat:      map[string]interface{}{"id": float64(-100123)},
-			Text:      "Direct message to quote",
-			From:      map[string]interface{}{"id": float64(789), "first_name": "Original"},
+	// Test that buildFromReplyMessage works when message not in cache
+	replyMsg := &models.Message{
+		ID:   99,
+		Text: "Direct message to quote",
+		Chat: models.Chat{
+			ID:   -100123,
+			Type: "supergroup",
+		},
+		From: &models.User{
+			ID:        789,
+			FirstName: "Original",
 		},
 	}
 
-	// Expect success message
-	mockClient.On("SendMessage", mock.Anything, int64(-100123), mock.MatchedBy(func(text string) bool {
-		return assert.Contains(t, text, "Quote #")
-		return assert.Contains(t, text, "added with 1 entries!")
-	})).Return(nil)
-
-	err := handler.Handle(context.Background(), message)
+	result, err := handler.buildFromReplyMessage(replyMsg)
 	require.NoError(t, err)
+	assert.Equal(t, int64(-100123), result.ChatID)
+	assert.Len(t, result.Entries, 1)
 
-	mockClient.AssertExpectations(t)
-
-	// Verify quote was stored
-	var quotes []Quote
-	err = db.DB.Where("chat_id = ?", -100123).Find(&quotes).Error
+	// Store the quote
+	creator := map[string]interface{}{
+		"id":         float64(456),
+		"first_name": "Test",
+	}
+	quote, err := handler.store.StoreFromBuild(context.Background(), creator, result)
 	require.NoError(t, err)
-	assert.Len(t, quotes, 1)
+	assert.NotZero(t, quote.ID)
+	assert.Len(t, quote.Entries, 1)
 }
 
-func TestAddQuoteHandler_Handle_NoChatID(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	mockClient := new(MockTelegramClient)
-	handler := NewAddQuoteHandler(db.DB, mockClient)
-
-	message := &TelegramMessage{
-		MessageID: 1,
-		Chat:      nil, // No chat
-		Text:      "/addquote",
-		ReplyToMessage: &TelegramMessage{
-			MessageID: 5,
-			Text:      "Message to quote",
+func TestExtractUser(t *testing.T) {
+	tests := []struct {
+		name     string
+		user     *models.User
+		expected map[string]interface{}
+	}{
+		{
+			name:     "nil user",
+			user:     nil,
+			expected: map[string]interface{}{"id": 0, "first_name": "Unknown"},
+		},
+		{
+			name: "user with all fields",
+			user: &models.User{
+				ID:        123,
+				FirstName: "John",
+				LastName:  "Doe",
+				Username:  "johndoe",
+			},
+			expected: map[string]interface{}{
+				"id":         int64(123),
+				"first_name": "John",
+				"last_name":  "Doe",
+				"username":   "johndoe",
+			},
+		},
+		{
+			name: "user with minimal fields",
+			user: &models.User{
+				ID:        456,
+				FirstName: "Jane",
+			},
+			expected: map[string]interface{}{
+				"id":         int64(456),
+				"first_name": "Jane",
+			},
 		},
 	}
 
-	err := handler.Handle(context.Background(), message)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "could not extract chat ID")
-}
-
-func TestAddQuoteHandler_Command(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB, nil)
-
-	assert.Equal(t, "/addquote", handler.Command())
-}
-
-func TestAddQuoteHandler_Description(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB, nil)
-
-	assert.Equal(t, "Add a quote by replying to a message", handler.Description())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractUser(tt.user)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

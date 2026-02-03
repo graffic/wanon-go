@@ -29,12 +29,13 @@ type TelegramConfig struct {
 
 // DatabaseConfig holds database connection configuration
 type DatabaseConfig struct {
-	Host     string `koanf:"host"`
-	Port     int    `koanf:"port"`
-	User     string `koanf:"user"`
-	Password string `koanf:"password"`
-	Database string `koanf:"database"`
-	SSLMode  string `koanf:"sslmode"`
+	Host       string `koanf:"host"`
+	Port       int    `koanf:"port"`
+	User       string `koanf:"user"`
+	Password   string `koanf:"password"`
+	Database   string `koanf:"database"`
+	SSLMode    string `koanf:"sslmode"`
+	Migrations string `koanf:"migrations"`
 }
 
 // CacheConfig holds cache-specific configuration
@@ -105,8 +106,9 @@ func Load(environment string) (*Config, error) {
 func defaultConfig() Config {
 	return Config{
 		Database: DatabaseConfig{
-			Port:    5432,
-			SSLMode: "disable",
+			Port:       5432,
+			SSLMode:    "disable",
+			Migrations: "./migrations",
 		},
 		Cache: CacheConfig{
 			CleanInterval: 10 * time.Minute,

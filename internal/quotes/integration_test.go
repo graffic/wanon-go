@@ -3,33 +3,16 @@ package quotes
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/graffic/wanon-go/internal/testutils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
 func TestQuotesIntegration_AddAndRetrieve(t *testing.T) {
 	db := testutils.NewTestDB(t)
-
-	// Create mock client
-	var sentMessages []struct {
-		ChatID int64  `json:"chat_id"`
-		Text   string `json:"text"`
-	}
-
-	mockClient := &MockTelegramClient{}
-	mockClient.On("SendMessage", mock.Anything, int64(-100123), mock.AnythingOfType("string")).Return(nil).Run(func(args mock.Arguments) {
-		sentMessages = append(sentMessages, struct {
-			ChatID int64  `json:"chat_id"`
-			Text   string `json:"text"`
-		}{ChatID: args.Get(1).(int64), Text: args.Get(2).(string)})
-	})
 
 	// Setup cache with a message
 	cachedMsg := map[string]interface{}{
@@ -49,58 +32,42 @@ func TestQuotesIntegration_AddAndRetrieve(t *testing.T) {
 	require.NoError(t, db.DB.Create(&cacheEntry).Error)
 
 	// Create addquote handler
-	addQuote := NewAddQuoteHandler(db.DB, mockClient)
+	addQuote := NewAddQuoteHandler(db.DB)
 
-	// Execute addquote command
-	addMsg := &TelegramMessage{
-		MessageID: 10,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		From:      map[string]interface{}{"id": float64(456), "first_name": "Test"},
-		Text:      "/addquote",
-		ReplyToMessage: &TelegramMessage{
-			MessageID: 5,
-			Chat:      map[string]interface{}{"id": float64(-100123)},
-			Text:      "Message to quote",
-			From:      map[string]interface{}{"id": float64(789), "first_name": "Original"},
-		},
-	}
-
-	err := addQuote.Handle(context.Background(), addMsg)
+	// Verify the quote can be built from cache
+	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 5)
 	require.NoError(t, err)
+	assert.Equal(t, int64(-100123), result.ChatID)
+	assert.Len(t, result.Entries, 1)
 
-	// Verify success message was sent
-	require.GreaterOrEqual(t, len(sentMessages), 1)
-	assert.Contains(t, sentMessages[0].Text, "Quote #")
-	assert.Contains(t, sentMessages[0].Text, "added with 1 entries!")
+	// Store the quote
+	creator := map[string]interface{}{
+		"id":         float64(456),
+		"first_name": "Test",
+	}
+	quote, err := addQuote.store.StoreFromBuild(context.Background(), creator, result)
+	require.NoError(t, err)
+	assert.NotZero(t, quote.ID)
+	assert.Len(t, quote.Entries, 1)
 
 	// Create rquote handler
-	rQuote := NewRQuoteHandler(db.DB, mockClient)
+	rQuote := NewRQuoteHandler(db.DB)
 
-	// Execute rquote command
-	rquoteMsg := &TelegramMessage{
-		MessageID: 20,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		From:      map[string]interface{}{"id": float64(456), "first_name": "Test"},
-		Text:      "/rquote",
-	}
-
-	err = rQuote.Handle(context.Background(), rquoteMsg)
+	// Verify the quote can be retrieved
+	randomQuote, err := rQuote.store.GetRandomForChat(context.Background(), -100123)
 	require.NoError(t, err)
+	require.NotNil(t, randomQuote)
+	assert.Equal(t, quote.ID, randomQuote.ID)
 
-	// Verify quote was retrieved and sent
-	require.GreaterOrEqual(t, len(sentMessages), 2)
-	assert.Contains(t, sentMessages[1].Text, "Original")
-	assert.Contains(t, sentMessages[1].Text, "Message to quote")
+	// Verify the quote can be rendered
+	rendered, err := rQuote.renderer.RenderWithDate(randomQuote)
+	require.NoError(t, err)
+	assert.Contains(t, rendered, "Original")
+	assert.Contains(t, rendered, "Message to quote")
 }
 
 func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 	db := testutils.NewTestDB(t)
-
-	var sentMessages []string
-	mockClient := &MockTelegramClient{}
-	mockClient.On("SendMessage", mock.Anything, int64(-100123), mock.AnythingOfType("string")).Return(nil).Run(func(args mock.Arguments) {
-		sentMessages = append(sentMessages, args.Get(2).(string))
-	})
 
 	// Create multiple quotes
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -134,32 +101,28 @@ func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 		require.NoError(t, db.DB.Create(&quote).Error)
 	}
 
+	// Create rquote handler
+	rQuote := NewRQuoteHandler(db.DB)
+
+	// Verify count
+	count, err := rQuote.store.CountForChat(context.Background(), -100123)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), count)
+
 	// Request random quotes multiple times
-	rQuote := NewRQuoteHandler(db.DB, mockClient)
-	msg := &TelegramMessage{
-		MessageID: 1,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		Text:      "/rquote",
-	}
-
-	// Request 10 times to likely hit all quotes
+	foundQuotes := make(map[string]bool)
 	for i := 0; i < 10; i++ {
-		err := rQuote.Handle(context.Background(), msg)
+		randomQuote, err := rQuote.store.GetRandomForChat(context.Background(), -100123)
 		require.NoError(t, err)
-	}
+		require.NotNil(t, randomQuote)
 
-	// Verify we got different quotes
-	require.GreaterOrEqual(t, len(sentMessages), 5)
+		rendered, err := rQuote.renderer.RenderWithDate(randomQuote)
+		require.NoError(t, err)
 
-	// Check that at least one of each quote was returned
-	// Format is: "#<id>\n<author>: <text>\n📅 <date>"
-	var foundQuotes []string
-	for _, sent := range sentMessages {
+		// Track which quotes we found
 		for _, q := range quotes {
-			// Check if the sent message contains the author and text
-			if strings.Contains(sent, fmt.Sprintf("%s: %s", q.author, q.text)) {
-				foundQuotes = append(foundQuotes, q.text)
-				break
+			if contains(rendered, q.author) && contains(rendered, q.text) {
+				foundQuotes[q.text] = true
 			}
 		}
 	}
@@ -170,12 +133,6 @@ func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 
 func TestQuotesIntegration_ReplyChain(t *testing.T) {
 	db := testutils.NewTestDB(t)
-
-	var sentMessages []string
-	mockClient := &MockTelegramClient{}
-	mockClient.On("SendMessage", mock.Anything, int64(-100123), mock.AnythingOfType("string")).Return(nil).Run(func(args mock.Arguments) {
-		sentMessages = append(sentMessages, args.Get(2).(string))
-	})
 
 	// Create a chain of messages in cache
 	msg1 := map[string]interface{}{
@@ -234,28 +191,25 @@ func TestQuotesIntegration_ReplyChain(t *testing.T) {
 	require.NoError(t, db.DB.Create(&cacheEntry3).Error)
 
 	// Create addquote handler
-	addQuote := NewAddQuoteHandler(db.DB, mockClient)
+	addQuote := NewAddQuoteHandler(db.DB)
 
-	// Add quote from reply to msg3
-	addMsg := &TelegramMessage{
-		MessageID: 10,
-		Chat:      map[string]interface{}{"id": float64(-100123)},
-		From:      map[string]interface{}{"id": float64(456), "first_name": "Test"},
-		Text:      "/addquote",
-		ReplyToMessage: &TelegramMessage{
-			MessageID: 3,
-			Chat:      map[string]interface{}{"id": float64(-100123)},
-			Text:      "Third",
-			From:      map[string]interface{}{"id": float64(3), "first_name": "User3"},
-		},
+	// Build quote from message 3 (should include chain)
+	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 3)
+	require.NoError(t, err)
+	assert.Equal(t, int64(-100123), result.ChatID)
+	assert.Len(t, result.Entries, 3)
+}
+
+// Helper function
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
 	}
-
-	err := addQuote.Handle(context.Background(), addMsg)
-	require.NoError(t, err)
-
-	// Verify the quote was stored with all 3 entries
-	var quote Quote
-	err = db.DB.Preload("Entries").First(&quote).Error
-	require.NoError(t, err)
-	assert.Len(t, quote.Entries, 3)
+	return false
 }

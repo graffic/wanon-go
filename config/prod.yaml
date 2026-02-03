@@ -5,12 +5,10 @@ telegram:
   webhook: ""
 
 database:
-  host: localhost
+  host: postgres
   port: 5432
   user: wanon
-  password: ""
-  database: wanon_prod
-  sslmode: require
+  password: wanon
+  database: wanon
+  sslmode: prefer
 
-cache:
-  max_age: 86400

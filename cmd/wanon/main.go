@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 
+	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/graffic/wanon-go/internal/bot"
+	"github.com/graffic/wanon-go/internal/bot/middleware"
 	"github.com/graffic/wanon-go/internal/cache"
 	"github.com/graffic/wanon-go/internal/config"
 	"github.com/graffic/wanon-go/internal/quotes"
 	"github.com/graffic/wanon-go/internal/storage"
-	"github.com/graffic/wanon-go/internal/telegram"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,6 +26,13 @@ func main() {
 }
 
 func run() error {
+	// Configure slog with debug level
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	handler := slog.NewTextHandler(os.Stderr, opts)
+	slog.SetDefault(slog.New(handler))
+
 	// Parse command/subcommand
 	cmd := parseCommand()
 
@@ -47,7 +53,7 @@ func run() error {
 		return runServer(cfg)
 	default:
 		// Default: run migrations and server
-		if err := runMigrations(cfg); err != nil {
+		if err := storage.RunMigrations(&cfg.Database); err != nil {
 			return err
 		}
 		return runServer(cfg)
@@ -59,32 +65,6 @@ func parseCommand() string {
 		return "default"
 	}
 	return os.Args[1]
-}
-
-func runMigrations(cfg *config.Config) error {
-	slog.Info("running database migrations")
-
-	// Build connection string from config
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Database,
-		cfg.Database.SSLMode,
-	)
-
-	// Run tern migrate using full path
-	cmd := exec.Command("tern", "migrate", "--conn-string", connStr, "--migrations", "./migrations")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
-
-	slog.Info("migrations completed successfully")
-	return nil
 }
 
 func runServer(cfg *config.Config) error {
@@ -105,46 +85,52 @@ func runServer(cfg *config.Config) error {
 	}
 	defer db.Close()
 
-	// Initialize Telegram client
-	telegramClient, err := telegram.NewHTTPClient(cfg.Telegram.Token)
-	if err != nil {
-		return fmt.Errorf("failed to create Telegram client: %w", err)
+	// Initialize cache service
+	cacheService := cache.NewService(db.DB)
+
+	// Create middlewares
+	chatFilterMiddleware := middleware.ChatFilter(cfg.AllowedChatIDs, slog.Default())
+	cacheMiddleware := createCacheMiddleware(cacheService)
+
+	// Create bot options
+	opts := []bot.Option{
+		bot.WithMiddlewares(chatFilterMiddleware, cacheMiddleware),
+		bot.WithDefaultHandler(defaultHandler),
 	}
 
-	// Create channel for updates (buffered for backpressure handling)
-	updatesCh := make(chan []models.Update, 100)
+	// Initialize Telegram bot
+	b, err := bot.New(cfg.Telegram.Token, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram bot: %w", err)
+	}
+
+	// Register command handlers
+	addQuoteHandler := quotes.NewAddQuoteHandler(db.DB)
+	rquoteHandler := quotes.NewRQuoteHandler(db.DB)
+
+	// Register handlers for specific commands
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/addquote", bot.MatchTypeExact,
+		wrapHandler(addQuoteHandler))
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/rquote", bot.MatchTypeExact,
+		wrapHandler(rquoteHandler))
 
 	// Create errgroup for concurrent component management
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Component 1: Updates poller
-	updates := bot.NewUpdates(telegramClient, updatesCh)
+	// Verify bot
+	user, err := b.GetMe(ctx)
+	if err != nil {
+		return ctx.Err()
+	}
+
+	// Component 1: Bot polling
 	g.Go(func() error {
-		return updates.Start(ctx)
+		slog.Info("starting bot polling", "firstName", user.FirstName, "lastName", user.LastName)
+		b.Start(ctx)
+		return ctx.Err()
 	})
 
-	// Component 2: Dispatcher
-	dispatcher := bot.NewDispatcher(updatesCh, cfg.AllowedChatIDs)
-
-	// Register cache middleware to process all messages through cache
-	cacheService := cache.NewService(db.DB)
-	cacheMiddleware := cache.NewMiddleware(cacheService, slog.Default())
-	dispatcher.AddUpdateHandler(cacheMiddleware.HandleUpdate)
-
-	// Register quote command handlers
-	// Create adapter for telegram client to match quotes.TelegramClient interface
-	quotesClient := quotes.NewTelegramClientAdapter(telegramClient)
-	addQuoteHandler := quotes.NewAddQuoteHandler(db.DB, quotesClient)
-	rquoteHandler := quotes.NewRQuoteHandler(db.DB, quotesClient)
-
-	dispatcher.Register("addquote", quotes.NewCommandAdapter(addQuoteHandler))
-	dispatcher.Register("rquote", quotes.NewCommandAdapter(rquoteHandler))
-
-	g.Go(func() error {
-		return dispatcher.Start(ctx)
-	})
-
-	// Component 3: Cache cleaner
+	// Component 2: Cache cleaner
 	cleanerConfig := cache.Config{
 		CleanInterval: cfg.Cache.CleanInterval,
 		KeepDuration:  cfg.Cache.KeepDuration,
@@ -167,4 +153,49 @@ func runServer(cfg *config.Config) error {
 
 	slog.Info("application stopped")
 	return nil
+}
+
+// createCacheMiddleware creates a bot middleware that processes updates through cache
+func createCacheMiddleware(cacheService *cache.Service) bot.Middleware {
+	cacheMw := cache.NewMiddleware(cacheService, slog.Default())
+
+	return func(next bot.HandlerFunc) bot.HandlerFunc {
+		return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+			// Process through cache first
+			if err := cacheMw.HandleUpdate(ctx, update); err != nil {
+				slog.Error("cache middleware error", "error", err)
+			}
+			// Continue to next handler
+			next(ctx, b, update)
+		}
+	}
+}
+
+// defaultHandler handles non-command messages
+func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	// Extract message from update
+	var msg *models.Message
+	if update.Message != nil {
+		msg = update.Message
+	} else if update.EditedMessage != nil {
+		msg = update.EditedMessage
+	}
+
+	if msg == nil {
+		return
+	}
+
+	// Default handler - just log the message
+	slog.Debug("received message", "chat_id", msg.Chat.ID, "text", msg.Text)
+}
+
+// wrapHandler wraps a command handler to match bot.HandlerFunc signature
+func wrapHandler(handler interface {
+	Handle(ctx context.Context, b *bot.Bot, update *models.Update) error
+}) bot.HandlerFunc {
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		if err := handler.Handle(ctx, b, update); err != nil {
+			slog.Error("command handler error", "error", err)
+		}
+	}
 }

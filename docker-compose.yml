@@ -23,23 +23,17 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: wanon-app
+    env_file:
+      - .env
     environment:
-      ENV: development
-      WANON_TELEGRAM_TOKEN: ${WANON_TELEGRAM_TOKEN}
-      WANON_DATABASE_HOST: postgres
-      WANON_DATABASE_PORT: 5432
-      WANON_DATABASE_USER: wanon
-      WANON_DATABASE_PASSWORD: wanon
-      WANON_DATABASE_DATABASE: wanon
-      WANON_DATABASE_SSLMODE: disable
-      WANON_CACHE_MAX_AGE: 86400
+      ENV: prod
+      DEBUG: true
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./config:/app/config:ro
     restart: unless-stopped
-    command: ["server"]
 
 volumes:
   postgres_data:

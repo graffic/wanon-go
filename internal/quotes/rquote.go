@@ -3,8 +3,9 @@ package quotes
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"gorm.io/gorm"
 )
 
@@ -14,36 +15,26 @@ type RQuoteHandler struct {
 	db       *gorm.DB
 	store    *Store
 	renderer *Renderer
-	client   TelegramClient
 }
 
 // NewRQuoteHandler creates a new rquote handler
-func NewRQuoteHandler(db *gorm.DB, client TelegramClient) *RQuoteHandler {
+func NewRQuoteHandler(db *gorm.DB) *RQuoteHandler {
 	return &RQuoteHandler{
 		db:       db,
 		store:    NewStore(db),
 		renderer: NewRenderer(),
-		client:   client,
 	}
-}
-
-// CanHandle checks if this handler can process the message
-func (h *RQuoteHandler) CanHandle(message *TelegramMessage) bool {
-	if message == nil || message.Text == "" {
-		return false
-	}
-	
-	// Check if text starts with /rquote (case insensitive)
-	text := strings.TrimSpace(message.Text)
-	return strings.HasPrefix(strings.ToLower(text), "/rquote")
 }
 
 // Handle processes the /rquote command
-func (h *RQuoteHandler) Handle(ctx context.Context, message *TelegramMessage) error {
-	chatID := h.extractChatID(message)
-	if chatID == 0 {
-		return fmt.Errorf("could not extract chat ID from message")
+// This signature matches go-telegram/bot handler func
+func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) error {
+	msg := update.Message
+	if msg == nil {
+		return nil
 	}
+
+	chatID := msg.Chat.ID
 
 	// Check if there are any quotes for this chat
 	count, err := h.store.CountForChat(ctx, chatID)
@@ -52,7 +43,11 @@ func (h *RQuoteHandler) Handle(ctx context.Context, message *TelegramMessage) er
 	}
 
 	if count == 0 {
-		return h.client.SendMessage(ctx, chatID, "No quotes found in this chat. Add some with /addquote!")
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "No quotes found in this chat. Add some with /addquote!",
+		})
+		return err
 	}
 
 	// Get a random quote for this chat
@@ -62,7 +57,11 @@ func (h *RQuoteHandler) Handle(ctx context.Context, message *TelegramMessage) er
 	}
 
 	if quote == nil {
-		return h.client.SendMessage(ctx, chatID, "No quotes found in this chat.")
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "No quotes found in this chat.",
+		})
+		return err
 	}
 
 	// Render the quote
@@ -72,24 +71,11 @@ func (h *RQuoteHandler) Handle(ctx context.Context, message *TelegramMessage) er
 	}
 
 	// Send the quote
-	return h.client.SendMessage(ctx, chatID, rendered)
-}
-
-// extractChatID extracts the chat ID from a message
-func (h *RQuoteHandler) extractChatID(message *TelegramMessage) int64 {
-	if message.Chat == nil {
-		return 0
-	}
-	
-	// Try to get id from chat map
-	if id, ok := message.Chat["id"].(float64); ok {
-		return int64(id)
-	}
-	if id, ok := message.Chat["id"].(int64); ok {
-		return id
-	}
-	
-	return 0
+	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: chatID,
+		Text:   rendered,
+	})
+	return err
 }
 
 // Command returns the command name
