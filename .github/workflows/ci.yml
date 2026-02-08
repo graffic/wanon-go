@@ -25,6 +25,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Install tern
+        run: go install github.com/jackc/tern/v2@latest
+
       - name: Run tests
         run: go test ./...
 
