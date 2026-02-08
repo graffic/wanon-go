@@ -21,7 +21,7 @@ type CacheEntry struct {
 
 // TableName specifies the table name for CacheEntry
 func (CacheEntry) TableName() string {
-	return "cache_entries"
+	return "cache_entry"
 }
 
 // Builder builds quote threads from cache entries by following reply chains
@@ -46,14 +46,14 @@ type BuildResult struct {
 func (b *Builder) BuildFrom(ctx context.Context, chatID int64, messageID int64) (*BuildResult, error) {
 	var entries []CacheEntry
 	currentID := messageID
-	
+
 	// Recursively follow reply chains
 	for currentID != 0 {
 		var entry CacheEntry
 		err := b.db.WithContext(ctx).
 			Where("chat_id = ? AND message_id = ?", chatID, currentID).
 			First(&entry).Error
-		
+
 		if err != nil {
 			if err == gorm.ErrRecordNotFound {
 				// Message not in cache, stop building
@@ -61,10 +61,10 @@ func (b *Builder) BuildFrom(ctx context.Context, chatID int64, messageID int64) 
 			}
 			return nil, fmt.Errorf("failed to fetch cache entry: %w", err)
 		}
-		
+
 		// Prepend entry (we're building from newest to oldest, but want oldest first)
 		entries = append([]CacheEntry{entry}, entries...)
-		
+
 		// Follow reply chain
 		if entry.ReplyID != nil && *entry.ReplyID != 0 {
 			currentID = *entry.ReplyID
@@ -72,11 +72,11 @@ func (b *Builder) BuildFrom(ctx context.Context, chatID int64, messageID int64) 
 			break
 		}
 	}
-	
+
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("no cache entries found for message %d in chat %d", messageID, chatID)
 	}
-	
+
 	return &BuildResult{
 		Entries: entries,
 		ChatID:  chatID,
@@ -91,12 +91,12 @@ func (b *Builder) BuildFromMessage(ctx context.Context, chatID int64, messageID 
 	if err == nil {
 		return result, nil
 	}
-	
+
 	// If not in cache and we have a reply, try to build from the reply chain
 	if replyToMessageID != nil && *replyToMessageID != 0 {
 		return b.BuildFrom(ctx, chatID, *replyToMessageID)
 	}
-	
+
 	return nil, err
 }
 

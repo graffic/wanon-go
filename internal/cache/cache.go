@@ -23,7 +23,7 @@ type CacheEntry struct {
 
 // TableName specifies the table name for CacheEntry
 func (CacheEntry) TableName() string {
-	return "cache_entries"
+	return "cache_entry"
 }
 
 // Service provides cache operations

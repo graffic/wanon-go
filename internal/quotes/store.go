@@ -21,9 +21,9 @@ func NewStore(db *gorm.DB) *Store {
 
 // StoreOptions contains options for storing a quote
 type StoreOptions struct {
-	Creator   map[string]interface{} // Telegram User who created the quote
-	ChatID    int64
-	Entries   []CacheEntry           // Cache entries to store as quote entries
+	Creator map[string]interface{} // Telegram User who created the quote
+	ChatID  int64
+	Entries []CacheEntry // Cache entries to store as quote entries
 }
 
 // Store saves a quote with its entries to the database.
@@ -95,7 +95,7 @@ func (s *Store) GetByID(ctx context.Context, id uint) (*Quote, error) {
 	var quote Quote
 	if err := s.db.WithContext(ctx).
 		Preload("Entries", func(db *gorm.DB) *gorm.DB {
-			return db.Order("quote_entries.order ASC")
+			return db.Order("quote_entry.order ASC")
 		}).
 		First(&quote, id).Error; err != nil {
 		return nil, fmt.Errorf("failed to get quote: %w", err)
@@ -106,23 +106,23 @@ func (s *Store) GetByID(ctx context.Context, id uint) (*Quote, error) {
 // GetRandomForChat retrieves a random quote for a specific chat
 func (s *Store) GetRandomForChat(ctx context.Context, chatID int64) (*Quote, error) {
 	var quote Quote
-	
+
 	// Use random ordering - PostgreSQL specific
 	err := s.db.WithContext(ctx).
 		Where("chat_id = ?", chatID).
 		Order("RANDOM()").
 		Preload("Entries", func(db *gorm.DB) *gorm.DB {
-			return db.Order("quote_entries.order ASC")
+			return db.Order("quote_entry.order ASC")
 		}).
 		First(&quote).Error
-	
+
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil // No quotes found
 		}
 		return nil, fmt.Errorf("failed to get random quote: %w", err)
 	}
-	
+
 	return &quote, nil
 }
 

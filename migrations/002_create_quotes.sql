@@ -1,5 +1,5 @@
--- Create quotes table
-CREATE TABLE IF NOT EXISTS quotes (
+-- Create quote table
+CREATE TABLE IF NOT EXISTS quote (
     id BIGSERIAL PRIMARY KEY,
     creator JSONB NOT NULL,
     chat_id BIGINT NOT NULL,
@@ -7,12 +7,12 @@ CREATE TABLE IF NOT EXISTS quotes (
 );
 
 -- Create index for chat lookups
-CREATE INDEX idx_quotes_chat_id ON quotes(chat_id);
+CREATE INDEX idx_quote_chat_id ON quote(chat_id);
 
--- Create quote_entries table
-CREATE TABLE IF NOT EXISTS quote_entries (
+-- Create quote_entry table
+CREATE TABLE IF NOT EXISTS quote_entry (
     id BIGSERIAL PRIMARY KEY,
-    quote_id BIGINT NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    quote_id BIGINT NOT NULL REFERENCES quote(id) ON DELETE CASCADE,
     "order" INT NOT NULL,
     message JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -21,12 +21,12 @@ CREATE TABLE IF NOT EXISTS quote_entries (
 );
 
 -- Create index for quote lookups
-CREATE INDEX idx_quote_entries_quote_id ON quote_entries(quote_id);
+CREATE INDEX idx_quote_entry_quote_id ON quote_entry(quote_id);
 
 -- Create index for soft deletes
-CREATE INDEX idx_quote_entries_deleted_at ON quote_entries(deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_quote_entry_deleted_at ON quote_entry(deleted_at) WHERE deleted_at IS NOT NULL;
 
 ---- create above / drop below ----
 
-DROP TABLE IF EXISTS quote_entries;
-DROP TABLE IF EXISTS quotes;
+DROP TABLE IF EXISTS quote_entry;
+DROP TABLE IF EXISTS quote;

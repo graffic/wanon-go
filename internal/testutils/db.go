@@ -99,7 +99,7 @@ func (tdb *TestDB) Cleanup() {
 	ctx := context.Background()
 
 	// Truncate tables
-	tables := []string{"quote_entries", "quotes", "cache_entries"}
+	tables := []string{"quote_entry", "quote", "cache_entry"}
 	for _, table := range tables {
 		tdb.DB.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table))
 	}
