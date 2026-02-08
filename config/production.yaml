@@ -17,3 +17,11 @@ database:
 cache:
   clean_interval: 10m
   keep_duration: 48h
+
+# Security: Automatically leave chats not in allowed_chat_ids
+# Set to true to enable auto-leave for unauthorized chats
+auto_leave_unauthorized: false
+
+# List of allowed chat IDs (comma-separated in env var: WANON_ALLOWED_CHAT_IDS)
+# Example: [-1001234567890, -1009876543210]
+allowed_chat_ids: []

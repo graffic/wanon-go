@@ -14,11 +14,12 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	Environment    string         `koanf:"environment"`
-	Telegram       TelegramConfig `koanf:"telegram"`
-	Database       DatabaseConfig `koanf:"database"`
-	Cache          CacheConfig    `koanf:"cache"`
-	AllowedChatIDs []int64        `koanf:"allowed_chat_ids"`
+	Environment           string         `koanf:"environment"`
+	Telegram              TelegramConfig `koanf:"telegram"`
+	Database              DatabaseConfig `koanf:"database"`
+	Cache                 CacheConfig    `koanf:"cache"`
+	AllowedChatIDs        []int64        `koanf:"allowed_chat_ids"`
+	AutoLeaveUnauthorized bool           `koanf:"auto_leave_unauthorized"`
 }
 
 // TelegramConfig holds Telegram bot configuration

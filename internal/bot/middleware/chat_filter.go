@@ -11,7 +11,8 @@ import (
 
 // ChatFilter creates a middleware that filters updates based on allowed chat IDs.
 // If allowedChatIDs is empty, all chats are allowed.
-func ChatFilter(allowedChatIDs []int64, logger *slog.Logger) bot.Middleware {
+// If autoLeave is true, the bot will attempt to leave unauthorized chats.
+func ChatFilter(allowedChatIDs []int64, autoLeave bool, logger *slog.Logger) bot.Middleware {
 	// Build lookup map for O(1) checking
 	allowed := make(map[int64]bool, len(allowedChatIDs))
 	for _, id := range allowedChatIDs {
@@ -19,7 +20,7 @@ func ChatFilter(allowedChatIDs []int64, logger *slog.Logger) bot.Middleware {
 	}
 	allowAll := len(allowedChatIDs) == 0
 
-	logger.Info("Chat filter", "allowAll", allowAll, "chatIds", allowedChatIDs)
+	logger.Info("Chat filter", "allowAll", allowAll, "autoLeave", autoLeave, "chatIds", allowedChatIDs)
 
 	return func(next bot.HandlerFunc) bot.HandlerFunc {
 		return func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -33,8 +34,20 @@ func ChatFilter(allowedChatIDs []int64, logger *slog.Logger) bot.Middleware {
 			// Check if chat is allowed
 			if !allowAll && !allowed[chatID] {
 				if logger != nil {
-					logger.Debug("ignoring update from unauthorized chat", "chat_id", chatID)
+					logger.Info("ignoring update from unauthorized chat", "chat_id", chatID)
 				}
+
+				// Attempt to leave the chat if autoLeave is enabled
+				if autoLeave && b != nil {
+					if logger != nil {
+						logger.Info("leaving unauthorized chat", "chat_id", chatID)
+					}
+					_, err := b.LeaveChat(ctx, &bot.LeaveChatParams{ChatID: chatID})
+					if err != nil && logger != nil {
+						logger.Error("failed to leave chat", "chat_id", chatID, "error", err)
+					}
+				}
+
 				return
 			}
 

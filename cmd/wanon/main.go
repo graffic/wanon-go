@@ -89,7 +89,7 @@ func runServer(cfg *config.Config) error {
 	cacheService := cache.NewService(db.DB)
 
 	// Create middlewares
-	chatFilterMiddleware := middleware.ChatFilter(cfg.AllowedChatIDs, slog.Default())
+	chatFilterMiddleware := middleware.ChatFilter(cfg.AllowedChatIDs, cfg.AutoLeaveUnauthorized, slog.Default())
 	cacheMiddleware := createCacheMiddleware(cacheService)
 
 	// Create bot options

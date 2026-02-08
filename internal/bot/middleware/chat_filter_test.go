@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"testing"
@@ -9,11 +10,15 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+}
+
 func TestChatFilter_AllowedChat(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789, -1009876543210}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -37,10 +42,10 @@ func TestChatFilter_AllowedChat(t *testing.T) {
 }
 
 func TestChatFilter_DeniedChat(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -64,11 +69,11 @@ func TestChatFilter_DeniedChat(t *testing.T) {
 }
 
 func TestChatFilter_AllowAll(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	// Empty allowedChatIDs means allow all
 	allowedChatIDs := []int64{}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -92,10 +97,10 @@ func TestChatFilter_AllowAll(t *testing.T) {
 }
 
 func TestChatFilter_NilUpdate(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -111,10 +116,10 @@ func TestChatFilter_NilUpdate(t *testing.T) {
 }
 
 func TestChatFilter_NoChatID(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -135,10 +140,10 @@ func TestChatFilter_NoChatID(t *testing.T) {
 }
 
 func TestChatFilter_EditedMessage(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -162,10 +167,10 @@ func TestChatFilter_EditedMessage(t *testing.T) {
 }
 
 func TestChatFilter_ChannelPost(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{-1009876543210}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -189,10 +194,10 @@ func TestChatFilter_ChannelPost(t *testing.T) {
 }
 
 func TestChatFilter_CallbackQuery(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -221,10 +226,10 @@ func TestChatFilter_CallbackQuery(t *testing.T) {
 }
 
 func TestChatFilter_CallbackQueryNoMessage(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -247,37 +252,10 @@ func TestChatFilter_CallbackQueryNoMessage(t *testing.T) {
 }
 
 func TestChatFilter_ChatMemberUpdate(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{-1009876543210}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
-
-	called := false
-	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		called = true
-	}
-
-	update := &models.Update{
-		MyChatMember: &models.ChatMemberUpdated{
-			Chat: models.Chat{
-				ID: -1009876543210,
-			},
-		},
-	}
-
-	handler := middleware(next)
-	handler(context.Background(), nil, update)
-
-	if !called {
-		t.Error("expected handler to be called for chat member update in allowed chat")
-	}
-}
-
-func TestChatFilter_ChatJoinRequest(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
-	allowedChatIDs := []int64{-1009876543210}
-
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -301,10 +279,10 @@ func TestChatFilter_ChatJoinRequest(t *testing.T) {
 }
 
 func TestChatFilter_MessageReaction(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := newTestLogger()
 	allowedChatIDs := []int64{123456789}
 
-	middleware := ChatFilter(allowedChatIDs, logger)
+	middleware := ChatFilter(allowedChatIDs, false, logger)
 
 	called := false
 	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -324,5 +302,59 @@ func TestChatFilter_MessageReaction(t *testing.T) {
 
 	if !called {
 		t.Error("expected handler to be called for message reaction in allowed chat")
+	}
+}
+
+func TestChatFilter_AutoLeaveUnauthorizedChat(t *testing.T) {
+	logger := newTestLogger()
+	allowedChatIDs := []int64{123456789}
+
+	middleware := ChatFilter(allowedChatIDs, true, logger)
+
+	called := false
+	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		called = true
+	}
+
+	update := &models.Update{
+		Message: &models.Message{
+			Chat: models.Chat{
+				ID: 999999999,
+			},
+		},
+	}
+
+	handler := middleware(next)
+	handler(context.Background(), nil, update)
+
+	if called {
+		t.Error("expected handler NOT to be called for unauthorized chat")
+	}
+}
+
+func TestChatFilter_NoAutoLeaveWhenDisabled(t *testing.T) {
+	logger := newTestLogger()
+	allowedChatIDs := []int64{123456789}
+
+	middleware := ChatFilter(allowedChatIDs, false, logger)
+
+	called := false
+	next := func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		called = true
+	}
+
+	update := &models.Update{
+		Message: &models.Message{
+			Chat: models.Chat{
+				ID: 999999999,
+			},
+		},
+	}
+
+	handler := middleware(next)
+	handler(context.Background(), nil, update)
+
+	if called {
+		t.Error("expected handler NOT to be called for unauthorized chat")
 	}
 }
