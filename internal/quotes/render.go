@@ -19,8 +19,8 @@ func NewRenderer() *Renderer {
 
 // RenderOptions contains options for rendering a quote
 type RenderOptions struct {
-	Quote      *Quote
-	IncludeID  bool
+	Quote     *Quote
+	IncludeID bool
 }
 
 // RenderResult contains the rendered quote text and metadata
@@ -100,26 +100,26 @@ func (r *Renderer) renderEntry(entry QuoteEntry) (string, error) {
 // buildAuthorName builds a display name from user info
 func (r *Renderer) buildAuthorName(firstName, lastName, username string) string {
 	var parts []string
-	
+
 	if firstName != "" {
 		parts = append(parts, firstName)
 	}
 	if lastName != "" {
 		parts = append(parts, lastName)
 	}
-	
+
 	name := strings.Join(parts, " ")
-	
+
 	// If no name available, use username
 	if name == "" && username != "" {
 		name = "@" + username
 	}
-	
+
 	// Fallback
 	if name == "" {
 		name = "Unknown"
 	}
-	
+
 	return name
 }
 
@@ -145,7 +145,7 @@ func (r *Renderer) RenderWithDate(quote *Quote) (string, error) {
 			Date int64 `json:"date"`
 		}
 		if err := json.Unmarshal(quote.Entries[0].Message, &msgData); err == nil && msgData.Date > 0 {
-			msgTime := time.Unix(msgData.Date, 0)
+			msgTime := time.Unix(msgData.Date, 0).UTC()
 			dateStr := msgTime.Format("2006-01-02 15:04")
 			result.Text = fmt.Sprintf("%s\n📅 %s", result.Text, dateStr)
 		}

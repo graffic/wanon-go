@@ -167,7 +167,7 @@ func TestRenderer_RenderWithDate(t *testing.T) {
 		{
 			name:     "with date",
 			quote:    createTestQuoteWithDate(42, []testMessage{{FirstName: "John", Text: "Hello"}}, 1609459200), // 2021-01-01 00:00:00 UTC
-			wantText: "#42\nJohn: Hello\n📅 2021-01-01 01:00", // Local timezone offset
+			wantText: "#42\nJohn: Hello\n📅 2021-01-01 00:00",                                                     // UTC time
 			wantErr:  false,
 		},
 		{
