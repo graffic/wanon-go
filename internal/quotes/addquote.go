@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -36,6 +37,7 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 	}
 
 	chatID := msg.Chat.ID
+	slog.Info("executing /addquote command", "chat_id", chatID, "user_id", msg.From.ID)
 
 	// Check if message is a reply
 	if msg.ReplyToMessage == nil {

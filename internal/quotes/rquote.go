@@ -3,6 +3,7 @@ package quotes
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -35,6 +36,7 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 	}
 
 	chatID := msg.Chat.ID
+	slog.Info("executing /rquote command", "chat_id", chatID, "user_id", msg.From.ID)
 
 	// Check if there are any quotes for this chat
 	count, err := h.store.CountForChat(ctx, chatID)

@@ -109,9 +109,9 @@ func runServer(cfg *config.Config) error {
 	rquoteHandler := quotes.NewRQuoteHandler(db.DB)
 
 	// Register handlers for specific commands
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/addquote", bot.MatchTypeExact,
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/addquote", bot.MatchTypeCommandStartOnly,
 		wrapHandler(addQuoteHandler))
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/rquote", bot.MatchTypeExact,
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/rquote", bot.MatchTypeCommandStartOnly,
 		wrapHandler(rquoteHandler))
 
 	// Create errgroup for concurrent component management
