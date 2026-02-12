@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 
 	"github.com/go-telegram/bot"
@@ -109,10 +110,8 @@ func runServer(cfg *config.Config) error {
 	rquoteHandler := quotes.NewRQuoteHandler(db.DB)
 
 	// Register handlers for specific commands
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/addquote", bot.MatchTypeCommandStartOnly,
-		wrapHandler(addQuoteHandler))
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/rquote", bot.MatchTypeCommandStartOnly,
-		wrapHandler(rquoteHandler))
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/addquote`), wrapHandler(addQuoteHandler))
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/rquote`), wrapHandler(rquoteHandler))
 
 	// Create errgroup for concurrent component management
 	g, ctx := errgroup.WithContext(ctx)
