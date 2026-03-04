@@ -4,17 +4,13 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"testing"
 	"time"
 
-	"github.com/graffic/wanon-go/internal/testutils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
-func TestClean_DeletesOldCacheEntries(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestClean_DeletesOldCacheEntries() {
+	db := s.db
 
 	// Create old cache entries
 	oldTime := time.Now().Add(-72 * time.Hour).Unix()
@@ -23,7 +19,7 @@ func TestClean_DeletesOldCacheEntries(t *testing.T) {
 		{ChatID: 1, MessageID: 2, Date: oldTime, Message: datatypes.JSON(`{"text":"old2"}`)},
 	}
 	for _, entry := range oldEntries {
-		require.NoError(t, db.DB.Create(&entry).Error)
+		s.Require().NoError(db.DB.Create(&entry).Error)
 	}
 
 	// Create recent cache entries
@@ -33,7 +29,7 @@ func TestClean_DeletesOldCacheEntries(t *testing.T) {
 		{ChatID: 1, MessageID: 4, Date: recentTime, Message: datatypes.JSON(`{"text":"recent2"}`)},
 	}
 	for _, entry := range recentEntries {
-		require.NoError(t, db.DB.Create(&entry).Error)
+		s.Require().NoError(db.DB.Create(&entry).Error)
 	}
 
 	// Run clean with 48 hour retention
@@ -45,25 +41,25 @@ func TestClean_DeletesOldCacheEntries(t *testing.T) {
 	cleaner := NewCleaner(NewService(db.DB), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify old entries are deleted
 	var count int64
 	db.DB.Model(&CacheEntry{}).Where("date <= ?", oldTime).Count(&count)
-	assert.Equal(t, int64(0), count)
+	s.Assert().Equal(int64(0), count)
 
 	// Verify recent entries remain
 	db.DB.Model(&CacheEntry{}).Count(&count)
-	assert.Equal(t, int64(2), count)
+	s.Assert().Equal(int64(2), count)
 }
 
-func TestClean_NoEntriesToDelete(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestClean_NoEntriesToDelete() {
+	db := s.db
 
 	// Create only recent entries
 	recentTime := time.Now().Add(-1 * time.Hour).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: recentTime, Message: datatypes.JSON(`{"text":"recent"}`)}
-	require.NoError(t, db.DB.Create(&entry).Error)
+	s.Require().NoError(db.DB.Create(&entry).Error)
 
 	// Run clean with 48 hour retention
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -74,16 +70,16 @@ func TestClean_NoEntriesToDelete(t *testing.T) {
 	cleaner := NewCleaner(NewService(db.DB), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify entry still exists
 	var count int64
 	db.DB.Model(&CacheEntry{}).Count(&count)
-	assert.Equal(t, int64(1), count)
+	s.Assert().Equal(int64(1), count)
 }
 
-func TestClean_EmptyCache(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestClean_EmptyCache() {
+	db := s.db
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	config := Config{
@@ -93,17 +89,17 @@ func TestClean_EmptyCache(t *testing.T) {
 	cleaner := NewCleaner(NewService(db.DB), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
-	require.NoError(t, err)
+	s.Require().NoError(err)
 }
 
-func TestClean_CorrectRetentionCalculation(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestClean_CorrectRetentionCalculation() {
+	db := s.db
 
 	// Create entry just past the threshold (48 hours + 1 second ago)
 	// Using strictly less than, so entry must be older than 48 hours to be deleted
 	thresholdTime := time.Now().Add(-48*time.Hour - time.Second).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: thresholdTime, Message: datatypes.JSON(`{"text":"threshold"}`)}
-	require.NoError(t, db.DB.Create(&entry).Error)
+	s.Require().NoError(db.DB.Create(&entry).Error)
 
 	// Run clean with 48 hour retention
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -114,20 +110,20 @@ func TestClean_CorrectRetentionCalculation(t *testing.T) {
 	cleaner := NewCleaner(NewService(db.DB), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
-	require.NoError(t, err)
+	s.Require().NoError(err)
 	// Entry older than 48 hours should be deleted
 	var count int64
 	db.DB.Model(&CacheEntry{}).Count(&count)
-	assert.Equal(t, int64(0), count)
+	s.Assert().Equal(int64(0), count)
 }
 
-func TestCleaner_StartStop(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestCleaner_StartStop() {
+	db := s.db
 
 	// Create old entries
 	oldTime := time.Now().Add(-72 * time.Hour).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: oldTime, Message: datatypes.JSON(`{"text":"old"}`)}
-	require.NoError(t, db.DB.Create(&entry).Error)
+	s.Require().NoError(db.DB.Create(&entry).Error)
 
 	// Create cleaner with short interval for testing
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -155,13 +151,13 @@ func TestCleaner_StartStop(t *testing.T) {
 	// Wait for cleaner to stop
 	select {
 	case err := <-done:
-		assert.Equal(t, context.Canceled, err)
+		s.Assert().Equal(context.Canceled, err)
 	case <-time.After(time.Second):
-		t.Fatal("Cleaner did not stop in time")
+		s.T().Fatal("Cleaner did not stop in time")
 	}
 
 	// Verify old entries were cleaned
 	var count int64
 	db.DB.Model(&CacheEntry{}).Count(&count)
-	assert.Equal(t, int64(0), count)
+	s.Assert().Equal(int64(0), count)
 }

@@ -3,32 +3,25 @@ package quotes
 import (
 	"context"
 	"encoding/json"
-	"testing"
 
 	"github.com/go-telegram/bot/models"
-	"github.com/graffic/wanon-go/internal/testutils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
-func TestAddQuoteHandler_Command(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB)
+func (s *QuotesDBSuite) TestAddQuoteHandler_Command() {
+	handler := NewAddQuoteHandler(s.db.DB)
 
-	assert.Equal(t, "/addquote", handler.Command())
+	s.Assert().Equal("/addquote", handler.Command())
 }
 
-func TestAddQuoteHandler_Description(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB)
+func (s *QuotesDBSuite) TestAddQuoteHandler_Description() {
+	handler := NewAddQuoteHandler(s.db.DB)
 
-	assert.Equal(t, "Add a quote by replying to a message", handler.Description())
+	s.Assert().Equal("Add a quote by replying to a message", handler.Description())
 }
 
-func TestAddQuoteHandler_buildFromReplyMessage(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB)
+func (s *QuotesDBSuite) TestAddQuoteHandler_buildFromReplyMessage() {
+	handler := NewAddQuoteHandler(s.db.DB)
 
 	replyMsg := &models.Message{
 		ID:   99,
@@ -44,15 +37,14 @@ func TestAddQuoteHandler_buildFromReplyMessage(t *testing.T) {
 	}
 
 	result, err := handler.buildFromReplyMessage(replyMsg)
-	require.NoError(t, err)
-	assert.Equal(t, int64(-100123), result.ChatID)
-	assert.Len(t, result.Entries, 1)
-	assert.Equal(t, int64(99), result.Entries[0].MessageID)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(-100123), result.ChatID)
+	s.Assert().Len(result.Entries, 1)
+	s.Assert().Equal(int64(99), result.Entries[0].MessageID)
 }
 
-func TestAddQuoteHandler_Handle_WithReply_MessageInCache(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB)
+func (s *QuotesDBSuite) TestAddQuoteHandler_Handle_WithReply_MessageInCache() {
+	handler := NewAddQuoteHandler(s.db.DB)
 
 	// Add message to cache
 	cachedMsg := map[string]interface{}{
@@ -69,18 +61,17 @@ func TestAddQuoteHandler_Handle_WithReply_MessageInCache(t *testing.T) {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msgJSON),
 	}
-	require.NoError(t, db.DB.Create(&cacheEntry).Error)
+	s.Require().NoError(s.db.DB.Create(&cacheEntry).Error)
 
 	// Verify quote was stored by checking the build result
 	result, err := handler.builder.BuildFrom(context.Background(), -100123, 5)
-	require.NoError(t, err)
-	assert.Equal(t, int64(-100123), result.ChatID)
-	assert.Len(t, result.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(-100123), result.ChatID)
+	s.Assert().Len(result.Entries, 1)
 }
 
-func TestAddQuoteHandler_Handle_WithReply_MessageNotInCache(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	handler := NewAddQuoteHandler(db.DB)
+func (s *QuotesDBSuite) TestAddQuoteHandler_Handle_WithReply_MessageNotInCache() {
+	handler := NewAddQuoteHandler(s.db.DB)
 
 	// Test that buildFromReplyMessage works when message not in cache
 	replyMsg := &models.Message{
@@ -97,9 +88,9 @@ func TestAddQuoteHandler_Handle_WithReply_MessageNotInCache(t *testing.T) {
 	}
 
 	result, err := handler.buildFromReplyMessage(replyMsg)
-	require.NoError(t, err)
-	assert.Equal(t, int64(-100123), result.ChatID)
-	assert.Len(t, result.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(-100123), result.ChatID)
+	s.Assert().Len(result.Entries, 1)
 
 	// Store the quote
 	creator := map[string]interface{}{
@@ -107,12 +98,12 @@ func TestAddQuoteHandler_Handle_WithReply_MessageNotInCache(t *testing.T) {
 		"first_name": "Test",
 	}
 	quote, err := handler.store.StoreFromBuild(context.Background(), creator, result)
-	require.NoError(t, err)
-	assert.NotZero(t, quote.ID)
-	assert.Len(t, quote.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().NotZero(quote.ID)
+	s.Assert().Len(quote.Entries, 1)
 }
 
-func TestExtractUser(t *testing.T) {
+func (s *QuotesDBSuite) TestExtractUser() {
 	tests := []struct {
 		name     string
 		user     *models.User
@@ -152,9 +143,10 @@ func TestExtractUser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		s.Run(tt.name, func() {
 			result := extractUser(tt.user)
-			assert.Equal(t, tt.expected, result)
+			s.Assert().Equal(tt.expected, result)
 		})
 	}
 }

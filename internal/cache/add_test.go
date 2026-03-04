@@ -5,17 +5,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
-	"testing"
-
-	"github.com/graffic/wanon-go/internal/testutils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestAdd_StoresMessageInCache(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestAdd_StoresMessageInCache() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	adder := NewAddCommand(NewService(db.DB), logger)
+	adder := NewAddCommand(NewService(s.db.DB), logger)
 
 	message := Message{
 		MessageID: 1,
@@ -27,23 +21,22 @@ func TestAdd_StoresMessageInCache(t *testing.T) {
 	messageJSON, _ := json.Marshal(message)
 
 	err := adder.Execute(context.Background(), messageJSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify entry was created
 	var entry CacheEntry
-	err = db.DB.First(&entry, "chat_id = ? AND message_id = ?", 123, 1).Error
-	require.NoError(t, err)
+	err = s.db.DB.First(&entry, "chat_id = ? AND message_id = ?", 123, 1).Error
+	s.Require().NoError(err)
 
-	assert.Equal(t, int64(123), entry.ChatID)
-	assert.Equal(t, int64(1), entry.MessageID)
-	assert.Equal(t, int64(1609459200), entry.Date)
-	assert.NotNil(t, entry.Message)
+	s.Assert().Equal(int64(123), entry.ChatID)
+	s.Assert().Equal(int64(1), entry.MessageID)
+	s.Assert().Equal(int64(1609459200), entry.Date)
+	s.Assert().NotNil(entry.Message)
 }
 
-func TestAdd_StoresReplyID(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestAdd_StoresReplyID() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	adder := NewAddCommand(NewService(db.DB), logger)
+	adder := NewAddCommand(NewService(s.db.DB), logger)
 
 	replyID := int64(5)
 	message := Message{
@@ -59,20 +52,19 @@ func TestAdd_StoresReplyID(t *testing.T) {
 	messageJSON, _ := json.Marshal(message)
 
 	err := adder.Execute(context.Background(), messageJSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	var entry CacheEntry
-	err = db.DB.First(&entry, "chat_id = ? AND message_id = ?", 123, 1).Error
-	require.NoError(t, err)
+	err = s.db.DB.First(&entry, "chat_id = ? AND message_id = ?", 123, 1).Error
+	s.Require().NoError(err)
 
-	assert.NotNil(t, entry.ReplyID)
-	assert.Equal(t, replyID, *entry.ReplyID)
+	s.Assert().NotNil(entry.ReplyID)
+	s.Assert().Equal(replyID, *entry.ReplyID)
 }
 
-func TestAdd_StoresFullMessageJSON(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestAdd_StoresFullMessageJSON() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	adder := NewAddCommand(NewService(db.DB), logger)
+	adder := NewAddCommand(NewService(s.db.DB), logger)
 
 	message := Message{
 		MessageID: 1,
@@ -84,25 +76,24 @@ func TestAdd_StoresFullMessageJSON(t *testing.T) {
 	messageJSON, _ := json.Marshal(message)
 
 	err := adder.Execute(context.Background(), messageJSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	var entry CacheEntry
-	err = db.DB.First(&entry, "chat_id = ? AND message_id = ?", 123, 1).Error
-	require.NoError(t, err)
+	err = s.db.DB.First(&entry, "chat_id = ? AND message_id = ?", 123, 1).Error
+	s.Require().NoError(err)
 
 	// Verify message JSON
 	var storedMessage Message
 	err = json.Unmarshal(entry.Message, &storedMessage)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
-	assert.Equal(t, message.MessageID, storedMessage.MessageID)
-	assert.Equal(t, message.Text, storedMessage.Text)
+	s.Assert().Equal(message.MessageID, storedMessage.MessageID)
+	s.Assert().Equal(message.Text, storedMessage.Text)
 }
 
-func TestAdd_DuplicateMessageUpdates(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestAdd_DuplicateMessageUpdates() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	adder := NewAddCommand(NewService(db.DB), logger)
+	adder := NewAddCommand(NewService(s.db.DB), logger)
 
 	// First add
 	message1 := Message{
@@ -114,7 +105,7 @@ func TestAdd_DuplicateMessageUpdates(t *testing.T) {
 	}
 	message1JSON, _ := json.Marshal(message1)
 	err := adder.Execute(context.Background(), message1JSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Second add with same IDs but different content
 	message2 := Message{
@@ -126,16 +117,16 @@ func TestAdd_DuplicateMessageUpdates(t *testing.T) {
 	}
 	message2JSON, _ := json.Marshal(message2)
 	err = adder.Execute(context.Background(), message2JSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify only one entry exists with updated content
 	var entries []CacheEntry
-	err = db.DB.Where("chat_id = ? AND message_id = ?", 123, 1).Find(&entries).Error
-	require.NoError(t, err)
-	assert.Len(t, entries, 1)
+	err = s.db.DB.Where("chat_id = ? AND message_id = ?", 123, 1).Find(&entries).Error
+	s.Require().NoError(err)
+	s.Assert().Len(entries, 1)
 
 	var storedMessage Message
 	err = json.Unmarshal(entries[0].Message, &storedMessage)
-	require.NoError(t, err)
-	assert.Equal(t, "Updated", storedMessage.Text)
+	s.Require().NoError(err)
+	s.Assert().Equal("Updated", storedMessage.Text)
 }

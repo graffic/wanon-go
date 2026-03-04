@@ -3,18 +3,13 @@ package quotes
 import (
 	"context"
 	"encoding/json"
-	"testing"
 	"time"
 
-	"github.com/graffic/wanon-go/internal/testutils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
-func TestStore_StoresQuoteWithEntries(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_StoresQuoteWithEntries() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{
 		"id":         123,
@@ -34,33 +29,32 @@ func TestStore_StoresQuoteWithEntries(t *testing.T) {
 		Creator: creator,
 		Entries: entries,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify quote was created
-	assert.NotZero(t, quote.ID)
-	assert.Equal(t, int64(-100123), quote.ChatID)
+	s.Assert().NotZero(quote.ID)
+	s.Assert().Equal(int64(-100123), quote.ChatID)
 	// Compare JSON by unmarshaling both to compare the data
 	var expectedCreator, actualCreator map[string]interface{}
 	json.Unmarshal(creatorJSON, &expectedCreator)
 	json.Unmarshal(quote.Creator, &actualCreator)
-	assert.Equal(t, expectedCreator, actualCreator)
-	assert.WithinDuration(t, time.Now(), quote.CreatedAt, time.Second)
+	s.Assert().Equal(expectedCreator, actualCreator)
+	s.Assert().WithinDuration(time.Now(), quote.CreatedAt, time.Second)
 
 	// Verify entries were stored
 	var storedEntries []QuoteEntry
-	err = db.DB.Where("quote_id = ?", quote.ID).Order("\"order\"").Find(&storedEntries).Error
-	require.NoError(t, err)
-	assert.Len(t, storedEntries, 3)
+	err = s.db.DB.Where("quote_id = ?", quote.ID).Order("\"order\"").Find(&storedEntries).Error
+	s.Require().NoError(err)
+	s.Assert().Len(storedEntries, 3)
 
 	// Verify order is correct (0, 1, 2)
 	for i, entry := range storedEntries {
-		assert.Equal(t, i, entry.Order)
+		s.Assert().Equal(i, entry.Order)
 	}
 }
 
-func TestStore_StoresSingleEntry(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_StoresSingleEntry() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 
@@ -73,18 +67,17 @@ func TestStore_StoresSingleEntry(t *testing.T) {
 		Creator: creator,
 		Entries: entries,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	var storedEntries []QuoteEntry
-	err = db.DB.Where("quote_id = ?", quote.ID).Find(&storedEntries).Error
-	require.NoError(t, err)
-	assert.Len(t, storedEntries, 1)
-	assert.Equal(t, 0, storedEntries[0].Order)
+	err = s.db.DB.Where("quote_id = ?", quote.ID).Find(&storedEntries).Error
+	s.Require().NoError(err)
+	s.Assert().Len(storedEntries, 1)
+	s.Assert().Equal(0, storedEntries[0].Order)
 }
 
-func TestStore_EmptyEntries(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_EmptyEntries() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 
@@ -93,13 +86,12 @@ func TestStore_EmptyEntries(t *testing.T) {
 		Creator: creator,
 		Entries: []CacheEntry{},
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot store quote with no entries")
+	s.Require().Error(err)
+	s.Assert().Contains(err.Error(), "cannot store quote with no entries")
 }
 
-func TestStore_MultipleQuotesInSameChat(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_MultipleQuotesInSameChat() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 
@@ -112,7 +104,7 @@ func TestStore_MultipleQuotesInSameChat(t *testing.T) {
 		Creator: creator,
 		Entries: entries1,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Store second quote
 	entries2 := []CacheEntry{
@@ -123,19 +115,18 @@ func TestStore_MultipleQuotesInSameChat(t *testing.T) {
 		Creator: creator,
 		Entries: entries2,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify both quotes exist
 	var quotes []Quote
-	err = db.DB.Where("chat_id = ?", -100123).Find(&quotes).Error
-	require.NoError(t, err)
-	assert.Len(t, quotes, 2)
-	assert.NotEqual(t, quote1.ID, quote2.ID)
+	err = s.db.DB.Where("chat_id = ?", -100123).Find(&quotes).Error
+	s.Require().NoError(err)
+	s.Assert().Len(quotes, 2)
+	s.Assert().NotEqual(quote1.ID, quote2.ID)
 }
 
-func TestStore_GetByID(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_GetByID() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -147,19 +138,18 @@ func TestStore_GetByID(t *testing.T) {
 		Creator: creator,
 		Entries: entries,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Retrieve by ID
 	retrieved, err := store.GetByID(context.Background(), quote.ID)
-	require.NoError(t, err)
-	assert.Equal(t, quote.ID, retrieved.ID)
-	assert.Equal(t, quote.ChatID, retrieved.ChatID)
-	assert.Len(t, retrieved.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().Equal(quote.ID, retrieved.ID)
+	s.Assert().Equal(quote.ChatID, retrieved.ChatID)
+	s.Assert().Len(retrieved.Entries, 1)
 }
 
-func TestStore_GetRandomForChat(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_GetRandomForChat() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -171,28 +161,26 @@ func TestStore_GetRandomForChat(t *testing.T) {
 		Creator: creator,
 		Entries: entries,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Get random quote
 	retrieved, err := store.GetRandomForChat(context.Background(), -100123)
-	require.NoError(t, err)
-	assert.NotNil(t, retrieved)
-	assert.Equal(t, int64(-100123), retrieved.ChatID)
+	s.Require().NoError(err)
+	s.Assert().NotNil(retrieved)
+	s.Assert().Equal(int64(-100123), retrieved.ChatID)
 }
 
-func TestStore_GetRandomForChat_NoQuotes(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_GetRandomForChat_NoQuotes() {
+	store := NewStore(s.db.DB)
 
 	// Get random quote from empty chat
 	retrieved, err := store.GetRandomForChat(context.Background(), -100123)
-	require.NoError(t, err)
-	assert.Nil(t, retrieved)
+	s.Require().NoError(err)
+	s.Assert().Nil(retrieved)
 }
 
-func TestStore_CountForChat(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_CountForChat() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -201,8 +189,8 @@ func TestStore_CountForChat(t *testing.T) {
 
 	// Initially empty
 	count, err := store.CountForChat(context.Background(), -100123)
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), count)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(0), count)
 
 	// Add a quote
 	_, err = store.Store(context.Background(), StoreOptions{
@@ -210,17 +198,16 @@ func TestStore_CountForChat(t *testing.T) {
 		Creator: creator,
 		Entries: entries,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Count should be 1
 	count, err = store.CountForChat(context.Background(), -100123)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), count)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(1), count)
 }
 
-func TestStore_Delete(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_Delete() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -232,22 +219,21 @@ func TestStore_Delete(t *testing.T) {
 		Creator: creator,
 		Entries: entries,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Delete the quote
 	err = store.Delete(context.Background(), quote.ID)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify it's gone
 	var count int64
-	err = db.DB.Model(&Quote{}).Where("id = ?", quote.ID).Count(&count).Error
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), count)
+	err = s.db.DB.Model(&Quote{}).Where("id = ?", quote.ID).Count(&count).Error
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(0), count)
 }
 
-func TestStore_StoreFromBuild(t *testing.T) {
-	db := testutils.NewTestDB(t)
-	store := NewStore(db.DB)
+func (s *QuotesDBSuite) TestStore_StoreFromBuild() {
+	store := NewStore(s.db.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -260,8 +246,8 @@ func TestStore_StoreFromBuild(t *testing.T) {
 	}
 
 	quote, err := store.StoreFromBuild(context.Background(), creator, result)
-	require.NoError(t, err)
-	assert.NotNil(t, quote)
-	assert.Equal(t, int64(-100123), quote.ChatID)
-	assert.Len(t, quote.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().NotNil(quote)
+	s.Assert().Equal(int64(-100123), quote.ChatID)
+	s.Assert().Len(quote.Entries, 1)
 }

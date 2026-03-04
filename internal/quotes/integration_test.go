@@ -3,16 +3,12 @@ package quotes
 import (
 	"context"
 	"encoding/json"
-	"testing"
 
-	"github.com/graffic/wanon-go/internal/testutils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
-func TestQuotesIntegration_AddAndRetrieve(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
+	db := s.db
 
 	// Setup cache with a message
 	cachedMsg := map[string]interface{}{
@@ -29,16 +25,16 @@ func TestQuotesIntegration_AddAndRetrieve(t *testing.T) {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msgJSON),
 	}
-	require.NoError(t, db.DB.Create(&cacheEntry).Error)
+	s.Require().NoError(db.DB.Create(&cacheEntry).Error)
 
 	// Create addquote handler
 	addQuote := NewAddQuoteHandler(db.DB)
 
 	// Verify the quote can be built from cache
 	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 5)
-	require.NoError(t, err)
-	assert.Equal(t, int64(-100123), result.ChatID)
-	assert.Len(t, result.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(-100123), result.ChatID)
+	s.Assert().Len(result.Entries, 1)
 
 	// Store the quote
 	creator := map[string]interface{}{
@@ -46,28 +42,28 @@ func TestQuotesIntegration_AddAndRetrieve(t *testing.T) {
 		"first_name": "Test",
 	}
 	quote, err := addQuote.store.StoreFromBuild(context.Background(), creator, result)
-	require.NoError(t, err)
-	assert.NotZero(t, quote.ID)
-	assert.Len(t, quote.Entries, 1)
+	s.Require().NoError(err)
+	s.Assert().NotZero(quote.ID)
+	s.Assert().Len(quote.Entries, 1)
 
 	// Create rquote handler
 	rQuote := NewRQuoteHandler(db.DB)
 
 	// Verify the quote can be retrieved
 	randomQuote, err := rQuote.store.GetRandomForChat(context.Background(), -100123)
-	require.NoError(t, err)
-	require.NotNil(t, randomQuote)
-	assert.Equal(t, quote.ID, randomQuote.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(randomQuote)
+	s.Assert().Equal(quote.ID, randomQuote.ID)
 
 	// Verify the quote can be rendered
 	rendered, err := rQuote.renderer.RenderWithDate(randomQuote)
-	require.NoError(t, err)
-	assert.Contains(t, rendered, "Original")
-	assert.Contains(t, rendered, "Message to quote")
+	s.Require().NoError(err)
+	s.Assert().Contains(rendered, "Original")
+	s.Assert().Contains(rendered, "Message to quote")
 }
 
-func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *QuotesDBSuite) TestQuotesIntegration_MultipleQuotes() {
+	db := s.db
 
 	// Create multiple quotes
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -98,7 +94,7 @@ func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 				{Order: 0, Message: datatypes.JSON(messageJSON)},
 			},
 		}
-		require.NoError(t, db.DB.Create(&quote).Error)
+		s.Require().NoError(db.DB.Create(&quote).Error)
 	}
 
 	// Create rquote handler
@@ -106,18 +102,18 @@ func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 
 	// Verify count
 	count, err := rQuote.store.CountForChat(context.Background(), -100123)
-	require.NoError(t, err)
-	assert.Equal(t, int64(3), count)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(3), count)
 
 	// Request random quotes multiple times
 	foundQuotes := make(map[string]bool)
 	for i := 0; i < 10; i++ {
 		randomQuote, err := rQuote.store.GetRandomForChat(context.Background(), -100123)
-		require.NoError(t, err)
-		require.NotNil(t, randomQuote)
+		s.Require().NoError(err)
+		s.Require().NotNil(randomQuote)
 
 		rendered, err := rQuote.renderer.RenderWithDate(randomQuote)
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		// Track which quotes we found
 		for _, q := range quotes {
@@ -128,11 +124,11 @@ func TestQuotesIntegration_MultipleQuotes(t *testing.T) {
 	}
 
 	// We should have found at least some of the quotes
-	assert.GreaterOrEqual(t, len(foundQuotes), 1)
+	s.Assert().GreaterOrEqual(len(foundQuotes), 1)
 }
 
-func TestQuotesIntegration_ReplyChain(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *QuotesDBSuite) TestQuotesIntegration_ReplyChain() {
+	db := s.db
 
 	// Create a chain of messages in cache
 	msg1 := map[string]interface{}{
@@ -165,7 +161,7 @@ func TestQuotesIntegration_ReplyChain(t *testing.T) {
 		Date:      1609459000,
 		Message:   datatypes.JSON(msg1JSON),
 	}
-	require.NoError(t, db.DB.Create(&cacheEntry1).Error)
+	s.Require().NoError(db.DB.Create(&cacheEntry1).Error)
 
 	// msg3 replies to msg2
 	msg2JSON, _ := json.Marshal(msg2)
@@ -177,7 +173,7 @@ func TestQuotesIntegration_ReplyChain(t *testing.T) {
 		Date:      1609459050,
 		Message:   datatypes.JSON(msg2JSON),
 	}
-	require.NoError(t, db.DB.Create(&cacheEntry2).Error)
+	s.Require().NoError(db.DB.Create(&cacheEntry2).Error)
 
 	msg3JSON, _ := json.Marshal(msg3)
 	replyID3 := int64(2)
@@ -188,16 +184,16 @@ func TestQuotesIntegration_ReplyChain(t *testing.T) {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msg3JSON),
 	}
-	require.NoError(t, db.DB.Create(&cacheEntry3).Error)
+	s.Require().NoError(db.DB.Create(&cacheEntry3).Error)
 
 	// Create addquote handler
 	addQuote := NewAddQuoteHandler(db.DB)
 
 	// Build quote from message 3 (should include chain)
 	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 3)
-	require.NoError(t, err)
-	assert.Equal(t, int64(-100123), result.ChatID)
-	assert.Len(t, result.Entries, 3)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(-100123), result.ChatID)
+	s.Assert().Len(result.Entries, 3)
 }
 
 // Helper function

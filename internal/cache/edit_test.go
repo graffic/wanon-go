@@ -5,17 +5,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
-	"testing"
 
-	"github.com/graffic/wanon-go/internal/testutils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
-func TestEdit_UpdatesExistingMessage(t *testing.T) {
-	db := testutils.NewTestDB(t)
-
+func (s *CacheDBSuite) TestEdit_UpdatesExistingMessage() {
 	// First add a message
 	originalMessage := Message{
 		MessageID: 1,
@@ -31,11 +25,11 @@ func TestEdit_UpdatesExistingMessage(t *testing.T) {
 		Date:      1609459200,
 		Message:   datatypes.JSON(originalJSON),
 	}
-	require.NoError(t, db.DB.Create(&entry).Error)
+	s.Require().NoError(s.db.DB.Create(&entry).Error)
 
 	// Now edit the message
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	editor := NewEditCommand(NewService(db.DB), logger)
+	editor := NewEditCommand(NewService(s.db.DB), logger)
 	editedMessage := EditedMessage{
 		MessageID: 1,
 		Chat:      Chat{ID: 123},
@@ -46,23 +40,22 @@ func TestEdit_UpdatesExistingMessage(t *testing.T) {
 	editedJSON, _ := json.Marshal(editedMessage)
 
 	err := editor.Execute(context.Background(), editedJSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify the message was updated
 	var updatedEntry CacheEntry
-	err = db.DB.First(&updatedEntry, "chat_id = ? AND message_id = ?", 123, 1).Error
-	require.NoError(t, err)
+	err = s.db.DB.First(&updatedEntry, "chat_id = ? AND message_id = ?", 123, 1).Error
+	s.Require().NoError(err)
 
 	var storedMessage Message
 	err = json.Unmarshal(updatedEntry.Message, &storedMessage)
-	require.NoError(t, err)
-	assert.Equal(t, "Edited text", storedMessage.Text)
+	s.Require().NoError(err)
+	s.Assert().Equal("Edited text", storedMessage.Text)
 }
 
-func TestEdit_NonExistentMessage(t *testing.T) {
-	db := testutils.NewTestDB(t)
+func (s *CacheDBSuite) TestEdit_NonExistentMessage() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	editor := NewEditCommand(NewService(db.DB), logger)
+	editor := NewEditCommand(NewService(s.db.DB), logger)
 
 	// Try to edit a message that doesn't exist
 	editedMessage := EditedMessage{
@@ -76,17 +69,15 @@ func TestEdit_NonExistentMessage(t *testing.T) {
 
 	err := editor.Execute(context.Background(), editedJSON)
 	// Should not error, just no-op
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify no entries exist
 	var count int64
-	db.DB.Model(&CacheEntry{}).Count(&count)
-	assert.Equal(t, int64(0), count)
+	s.db.DB.Model(&CacheEntry{}).Count(&count)
+	s.Assert().Equal(int64(0), count)
 }
 
-func TestEdit_PreservesOtherFields(t *testing.T) {
-	db := testutils.NewTestDB(t)
-
+func (s *CacheDBSuite) TestEdit_PreservesOtherFields() {
 	// Add message with reply
 	replyID := int64(5)
 	originalMessage := Message{
@@ -105,11 +96,11 @@ func TestEdit_PreservesOtherFields(t *testing.T) {
 		Date:      1609459200,
 		Message:   datatypes.JSON(originalJSON),
 	}
-	require.NoError(t, db.DB.Create(&entry).Error)
+	s.Require().NoError(s.db.DB.Create(&entry).Error)
 
 	// Edit the message
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	editor := NewEditCommand(NewService(db.DB), logger)
+	editor := NewEditCommand(NewService(s.db.DB), logger)
 	editedMessage := EditedMessage{
 		MessageID: 1,
 		Chat:      Chat{ID: 123},
@@ -120,20 +111,18 @@ func TestEdit_PreservesOtherFields(t *testing.T) {
 	editedJSON, _ := json.Marshal(editedMessage)
 
 	err := editor.Execute(context.Background(), editedJSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Verify reply_id is preserved
 	var updatedEntry CacheEntry
-	err = db.DB.First(&updatedEntry, "chat_id = ? AND message_id = ?", 123, 1).Error
-	require.NoError(t, err)
+	err = s.db.DB.First(&updatedEntry, "chat_id = ? AND message_id = ?", 123, 1).Error
+	s.Require().NoError(err)
 
-	assert.NotNil(t, updatedEntry.ReplyID)
-	assert.Equal(t, replyID, *updatedEntry.ReplyID)
+	s.Assert().NotNil(updatedEntry.ReplyID)
+	s.Assert().Equal(replyID, *updatedEntry.ReplyID)
 }
 
-func TestEdit_DifferentChatID(t *testing.T) {
-	db := testutils.NewTestDB(t)
-
+func (s *CacheDBSuite) TestEdit_DifferentChatID() {
 	// Add message in chat 123
 	originalMessage := Message{
 		MessageID: 1,
@@ -149,11 +138,11 @@ func TestEdit_DifferentChatID(t *testing.T) {
 		Date:      1609459200,
 		Message:   datatypes.JSON(originalJSON),
 	}
-	require.NoError(t, db.DB.Create(&entry).Error)
+	s.Require().NoError(s.db.DB.Create(&entry).Error)
 
 	// Try to edit message with same ID but different chat
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	editor := NewEditCommand(NewService(db.DB), logger)
+	editor := NewEditCommand(NewService(s.db.DB), logger)
 	editedMessage := EditedMessage{
 		MessageID: 1,
 		Chat:      Chat{ID: 456},
@@ -164,15 +153,15 @@ func TestEdit_DifferentChatID(t *testing.T) {
 	editedJSON, _ := json.Marshal(editedMessage)
 
 	err := editor.Execute(context.Background(), editedJSON)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Original message should be unchanged
 	var originalEntry CacheEntry
-	err = db.DB.First(&originalEntry, "chat_id = ? AND message_id = ?", 123, 1).Error
-	require.NoError(t, err)
+	err = s.db.DB.First(&originalEntry, "chat_id = ? AND message_id = ?", 123, 1).Error
+	s.Require().NoError(err)
 
 	var storedMessage Message
 	err = json.Unmarshal(originalEntry.Message, &storedMessage)
-	require.NoError(t, err)
-	assert.Equal(t, "Original", storedMessage.Text)
+	s.Require().NoError(err)
+	s.Assert().Equal("Original", storedMessage.Text)
 }
