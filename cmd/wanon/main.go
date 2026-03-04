@@ -15,6 +15,7 @@ import (
 	"github.com/graffic/wanon-go/internal/cache"
 	"github.com/graffic/wanon-go/internal/config"
 	"github.com/graffic/wanon-go/internal/quotes"
+	"github.com/graffic/wanon-go/internal/stats"
 	"github.com/graffic/wanon-go/internal/storage"
 	"golang.org/x/sync/errgroup"
 )
@@ -88,14 +89,16 @@ func runServer(cfg *config.Config) error {
 
 	// Initialize cache service
 	cacheService := cache.NewService(db.DB)
+	statsService := stats.NewService(db.DB)
 
 	// Create middlewares
 	chatFilterMiddleware := middleware.ChatFilter(cfg.AllowedChatIDs, cfg.AutoLeaveUnauthorized, slog.Default())
 	cacheMiddleware := createCacheMiddleware(cacheService)
+	statsMiddleware := stats.NewMiddleware(statsService, slog.Default())
 
 	// Create bot options
 	opts := []bot.Option{
-		bot.WithMiddlewares(chatFilterMiddleware, cacheMiddleware),
+		bot.WithMiddlewares(chatFilterMiddleware, cacheMiddleware, statsMiddleware),
 		bot.WithDefaultHandler(defaultHandler),
 	}
 
@@ -110,8 +113,19 @@ func runServer(cfg *config.Config) error {
 	rquoteHandler := quotes.NewRQuoteHandler(db.DB)
 
 	// Register handlers for specific commands
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/addquote`), wrapHandler(addQuoteHandler))
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/rquote`), wrapHandler(rquoteHandler))
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/addquote`), addQuoteHandler.Handle)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/rquote`), rquoteHandler.Handle)
+
+	// Register bot commands with Telegram (shows in command menu)
+	commands := []models.BotCommand{
+		{Command: addQuoteHandler.Command(), Description: addQuoteHandler.Description()},
+		{Command: rquoteHandler.Command(), Description: rquoteHandler.Description()},
+	}
+	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands}); err != nil {
+		slog.Error("failed to set bot commands", "error", err)
+	} else {
+		slog.Info("bot commands registered", "count", len(commands))
+	}
 
 	// Create errgroup for concurrent component management
 	g, ctx := errgroup.WithContext(ctx)
@@ -186,15 +200,4 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 	// Default handler - just log the message
 	slog.Debug("received message", "chat_id", msg.Chat.ID, "text", msg.Text)
-}
-
-// wrapHandler wraps a command handler to match bot.HandlerFunc signature
-func wrapHandler(handler interface {
-	Handle(ctx context.Context, b *bot.Bot, update *models.Update) error
-}) bot.HandlerFunc {
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		if err := handler.Handle(ctx, b, update); err != nil {
-			slog.Error("command handler error", "error", err)
-		}
-	}
 }

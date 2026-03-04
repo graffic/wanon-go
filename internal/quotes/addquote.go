@@ -29,11 +29,11 @@ func NewAddQuoteHandler(db *gorm.DB) *AddQuoteHandler {
 }
 
 // Handle processes the /addquote command
-// This signature matches go-telegram/bot handler func
-func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) error {
+// This signature matches bot.HandlerFunc
+func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
 	msg := update.Message
 	if msg == nil {
-		return nil
+		return
 	}
 
 	chatID := msg.Chat.ID
@@ -45,7 +45,10 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 			ChatID: chatID,
 			Text:   "Please reply to a message to add it as a quote.",
 		})
-		return err
+		if err != nil {
+			slog.Error("failed to send message", "error", err)
+		}
+		return
 	}
 
 	// Build the quote from cache
@@ -60,7 +63,10 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 				ChatID: chatID,
 				Text:   "Could not build quote. The message may be too old or not in cache.",
 			})
-			return err
+			if err != nil {
+				slog.Error("failed to send message", "error", err)
+			}
+			return
 		}
 	}
 
@@ -69,7 +75,8 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 
 	quote, err := h.store.StoreFromBuild(ctx, creator, result)
 	if err != nil {
-		return fmt.Errorf("failed to store quote: %w", err)
+		slog.Error("failed to store quote", "error", err)
+		return
 	}
 
 	// Send confirmation
@@ -78,7 +85,9 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 		ChatID: chatID,
 		Text:   confirmation,
 	})
-	return err
+	if err != nil {
+		slog.Error("failed to send message", "error", err)
+	}
 }
 
 // buildFromReplyMessage builds a quote result from a reply message directly

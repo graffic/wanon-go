@@ -2,7 +2,6 @@ package quotes
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/go-telegram/bot"
@@ -28,11 +27,11 @@ func NewRQuoteHandler(db *gorm.DB) *RQuoteHandler {
 }
 
 // Handle processes the /rquote command
-// This signature matches go-telegram/bot handler func
-func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) error {
+// This signature matches bot.HandlerFunc
+func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
 	msg := update.Message
 	if msg == nil {
-		return nil
+		return
 	}
 
 	chatID := msg.Chat.ID
@@ -41,7 +40,8 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 	// Check if there are any quotes for this chat
 	count, err := h.store.CountForChat(ctx, chatID)
 	if err != nil {
-		return fmt.Errorf("failed to count quotes: %w", err)
+		slog.Error("failed to count quotes", "error", err)
+		return
 	}
 
 	if count == 0 {
@@ -49,13 +49,17 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 			ChatID: chatID,
 			Text:   "No quotes found in this chat. Add some with /addquote!",
 		})
-		return err
+		if err != nil {
+			slog.Error("failed to send message", "error", err)
+		}
+		return
 	}
 
 	// Get a random quote for this chat
 	quote, err := h.store.GetRandomForChat(ctx, chatID)
 	if err != nil {
-		return fmt.Errorf("failed to get random quote: %w", err)
+		slog.Error("failed to get random quote", "error", err)
+		return
 	}
 
 	if quote == nil {
@@ -63,13 +67,17 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 			ChatID: chatID,
 			Text:   "No quotes found in this chat.",
 		})
-		return err
+		if err != nil {
+			slog.Error("failed to send message", "error", err)
+		}
+		return
 	}
 
 	// Render the quote
 	rendered, err := h.renderer.RenderWithDate(quote)
 	if err != nil {
-		return fmt.Errorf("failed to render quote: %w", err)
+		slog.Error("failed to render quote", "error", err)
+		return
 	}
 
 	// Send the quote
@@ -77,7 +85,9 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 		ChatID: chatID,
 		Text:   rendered,
 	})
-	return err
+	if err != nil {
+		slog.Error("failed to send message", "error", err)
+	}
 }
 
 // Command returns the command name
