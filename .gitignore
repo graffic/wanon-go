@@ -1,4 +1,5 @@
 .env
 *.sql
+!migrations/*
 wanon
 .vscode/settings.json
