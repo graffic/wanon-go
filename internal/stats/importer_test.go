@@ -15,45 +15,6 @@ import (
 // Pure unit tests (no DB)
 // ---------------------------------------------------------------------------
 
-func TestExportCutoff(t *testing.T) {
-	tests := []struct {
-		name       string
-		maxTimeUTC time.Time // input (UTC epoch – avoids ambiguity in test setup)
-		wantCutoff time.Time // expected cutoff in UTC
-	}{
-		{
-			// Madrid is UTC+1 (winter). 12:45 Madrid = 11:45 UTC.
-			// Last complete Madrid hour starts at 12:00 Madrid = 11:00 UTC.
-			name:       "winter time UTC+1",
-			maxTimeUTC: time.Date(2022, 11, 10, 11, 45, 0, 0, time.UTC),
-			wantCutoff: time.Date(2022, 11, 10, 11, 0, 0, 0, time.UTC),
-		},
-		{
-			// Madrid is UTC+2 (summer CEST). 14:30 Madrid = 12:30 UTC.
-			// Last complete Madrid hour starts at 14:00 Madrid = 12:00 UTC.
-			name:       "summer time UTC+2 (CEST)",
-			maxTimeUTC: time.Date(2022, 8, 20, 12, 30, 0, 0, time.UTC),
-			wantCutoff: time.Date(2022, 8, 20, 12, 0, 0, 0, time.UTC),
-		},
-		{
-			// Exactly on the hour boundary: 15:00 Madrid (winter).
-			// The current hour (15:xx) is not yet complete, so last complete is 15:00 Madrid = 14:00 UTC.
-			name:       "exactly on the hour boundary",
-			maxTimeUTC: time.Date(2022, 11, 10, 14, 0, 0, 0, time.UTC),
-			wantCutoff: time.Date(2022, 11, 10, 14, 0, 0, 0, time.UTC),
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := exportCutoff(tc.maxTimeUTC)
-			if !got.Equal(tc.wantCutoff) {
-				t.Errorf("exportCutoff(%v) = %v, want %v", tc.maxTimeUTC, got, tc.wantCutoff)
-			}
-		})
-	}
-}
-
 func TestParseFromID(t *testing.T) {
 	tests := []struct {
 		input  string
@@ -79,7 +40,6 @@ func TestParseExportTime_UnixPreferred(t *testing.T) {
 	m := &exportMessage{
 		ID:           1,
 		Type:         "message",
-		Date:         "2022-08-20T12:31:47",
 		DateUnixtime: "1660991507",
 	}
 	got, err := parseExportTime(m)
@@ -87,23 +47,6 @@ func TestParseExportTime_UnixPreferred(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := time.Unix(1660991507, 0).UTC()
-	if !got.Equal(want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-}
-
-func TestParseExportTime_FallbackDate(t *testing.T) {
-	m := &exportMessage{
-		ID:   2,
-		Type: "message",
-		Date: "2022-08-20T12:31:47",
-	}
-	got, err := parseExportTime(m)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// 2022-08-20T12:31:47 Europe/Madrid (CEST = UTC+2) → 10:31:47 UTC
-	want := time.Date(2022, 8, 20, 10, 31, 47, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
@@ -140,8 +83,8 @@ func minimalExport(chatID int64, msgs []exportMessage) string {
 	parts := make([]string, 0, len(msgs))
 	for _, m := range msgs {
 		parts = append(parts, fmt.Sprintf(
-			`{"id":%d,"type":%q,"date":%q,"date_unixtime":%q,"from":%q,"from_id":%q}`,
-			m.ID, m.Type, m.Date, m.DateUnixtime, m.From, m.FromID,
+			`{"id":%d,"type":%q,"date_unixtime":%q,"from":%q,"from_id":%q}`,
+			m.ID, m.Type, m.DateUnixtime, m.From, m.FromID,
 		))
 	}
 	return fmt.Sprintf(`{"id":%d,"messages":[%s]}`, chatID, strings.Join(parts, ","))

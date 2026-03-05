@@ -10,22 +10,10 @@ import (
 	"time"
 )
 
-// spainLocation is Europe/Madrid (GMT+1 standard / GMT+2 CEST).
-var spainLocation *time.Location
-
-func init() {
-	loc, err := time.LoadLocation("Europe/Madrid")
-	if err != nil {
-		panic(fmt.Sprintf("stats: failed to load Europe/Madrid timezone: %v", err))
-	}
-	spainLocation = loc
-}
-
 // exportMessage is the minimal fields we need from the Telegram JSON export.
 type exportMessage struct {
 	ID           int64  `json:"id"`
 	Type         string `json:"type"`
-	Date         string `json:"date"`
 	DateUnixtime string `json:"date_unixtime"`
 	From         string `json:"from"`
 	FromID       string `json:"from_id"`
@@ -94,7 +82,7 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 		return &ImportResult{}, nil
 	}
 
-	cutoffUTC := exportCutoff(maxTime)
+	cutoffUTC := maxTime.Truncate(time.Hour)
 
 	// --- pass 2: aggregate counts per (chatID, userID, bucket) -------------
 	type bucketEntry struct {
@@ -231,28 +219,8 @@ SET total_messages  = EXCLUDED.total_messages,
 	}, nil
 }
 
-// exportCutoff returns the last complete hour boundary (UTC) based on the
-// maximum message timestamp in the export, using Europe/Madrid as the
-// reference timezone.
-//
-// Example: if maxTime is 2022-08-20 12:45 (Madrid), the last complete hour
-// started at 12:00 Madrid, so cutoff = 12:59:59.999… Madrid = that converted
-// to UTC.  We represent the cutoff as the end of that hour bucket, i.e.
-// bucket_start_UTC + 1h - 1ns (anything ≤ cutoff is included).
-// In practice we compare message times with ≤ cutoff, and since we truncate
-// to hour anyway, returning the truncated-to-hour UTC time is sufficient:
-// messages in the same bucket (same truncated hour) are all ≤ their bucket.
-//
-// Concretely: cutoff = Truncate(maxTime in Madrid, hour) converted back to UTC.
-func exportCutoff(maxTime time.Time) time.Time {
-	madrid := maxTime.In(spainLocation)
-	lastCompleteHour := madrid.Truncate(time.Hour)
-	return lastCompleteHour.UTC()
-}
-
 // parseExportTime converts an exportMessage timestamp to UTC.
-// It prefers date_unixtime (epoch string) to avoid any ambiguity.
-// Falls back to parsing date as Europe/Madrid local time.
+// It uses date_unixtime as it comes in UTC always.
 func parseExportTime(m *exportMessage) (time.Time, error) {
 	if m.DateUnixtime != "" {
 		epoch, err := strconv.ParseInt(strings.TrimSpace(m.DateUnixtime), 10, 64)
@@ -260,13 +228,8 @@ func parseExportTime(m *exportMessage) (time.Time, error) {
 			return time.Unix(epoch, 0).UTC(), nil
 		}
 	}
-	if m.Date != "" {
-		t, err := time.ParseInLocation("2006-01-02T15:04:05", m.Date, spainLocation)
-		if err == nil {
-			return t.UTC(), nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("no valid timestamp in message id=%d", m.ID)
+
+	return time.Time{}, fmt.Errorf("no valid date_unixtime in message id=%d", m.ID)
 }
 
 // parseFromID converts a Telegram export from_id string (e.g. "user502546420"
