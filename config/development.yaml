@@ -17,6 +17,9 @@ cache:
   clean_interval: 10m
   keep_duration: 48h
 
+logging:
+  level: info
+
 # Security: Automatically leave chats not in allowed_chat_ids
 # Set to true to enable auto-leave for unauthorized chats
 auto_leave_unauthorized: false

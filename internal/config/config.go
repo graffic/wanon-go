@@ -18,6 +18,7 @@ type Config struct {
 	Telegram              TelegramConfig `koanf:"telegram"`
 	Database              DatabaseConfig `koanf:"database"`
 	Cache                 CacheConfig    `koanf:"cache"`
+	Logging               LoggingConfig  `koanf:"logging"`
 	AllowedChatIDs        []int64        `koanf:"allowed_chat_ids"`
 	AutoLeaveUnauthorized bool           `koanf:"auto_leave_unauthorized"`
 }
@@ -43,6 +44,11 @@ type DatabaseConfig struct {
 type CacheConfig struct {
 	CleanInterval time.Duration `koanf:"clean_interval"` // e.g., "10m"
 	KeepDuration  time.Duration `koanf:"keep_duration"`  // e.g., "48h"
+}
+
+// LoggingConfig holds logging configuration.
+type LoggingConfig struct {
+	Level string `koanf:"level"`
 }
 
 // DSN returns the PostgreSQL connection string
@@ -114,6 +120,9 @@ func defaultConfig() Config {
 		Cache: CacheConfig{
 			CleanInterval: 10 * time.Minute,
 			KeepDuration:  48 * time.Hour,
+		},
+		Logging: LoggingConfig{
+			Level: "info",
 		},
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strings"
 	"syscall"
 
 	"github.com/go-telegram/bot"
@@ -28,13 +29,6 @@ func main() {
 }
 
 func run() error {
-	// Configure slog with debug level
-	opts := &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}
-	handler := slog.NewTextHandler(os.Stderr, opts)
-	slog.SetDefault(slog.New(handler))
-
 	// Parse command/subcommand
 	cmd := parseCommand()
 
@@ -48,6 +42,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// Configure slog with configured level
+	level := parseLogLevel(cfg.Logging.Level)
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+	handler := slog.NewTextHandler(os.Stderr, opts)
+	slog.SetDefault(slog.New(handler))
 
 	// Execute command
 	switch cmd {
@@ -67,6 +69,21 @@ func parseCommand() string {
 		return "default"
 	}
 	return os.Args[1]
+}
+
+func parseLogLevel(level string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	case "info", "":
+		return slog.LevelInfo
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func runServer(cfg *config.Config) error {

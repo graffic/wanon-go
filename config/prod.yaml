@@ -12,7 +12,9 @@ database:
   database: wanon
   sslmode: prefer
 
+logging:
+  level: info
+
 # Security: Automatically leave chats not in allowed_chat_ids
 auto_leave_unauthorized: false
 allowed_chat_ids: []
-
