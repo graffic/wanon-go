@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.26 AS builder
 
+ARG TARGETOS
+ARG TARGETARCH
+
 # Set working directory
 WORKDIR /build
 
@@ -14,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-w -s" \
     -o /build/wanon \
     ./cmd/wanon
