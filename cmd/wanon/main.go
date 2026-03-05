@@ -111,15 +111,19 @@ func runServer(cfg *config.Config) error {
 	// Register command handlers
 	addQuoteHandler := quotes.NewAddQuoteHandler(db.DB)
 	rquoteHandler := quotes.NewRQuoteHandler(db.DB)
+	seenHandler := stats.NewSeenHandler(statsService, slog.Default())
 
 	// Register handlers for specific commands
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/addquote`), addQuoteHandler.Handle)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/rquote`), rquoteHandler.Handle)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/seen`), seenHandler.Handle)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^!seen`), seenHandler.Handle)
 
 	// Register bot commands with Telegram (shows in command menu)
 	commands := []models.BotCommand{
 		{Command: addQuoteHandler.Command(), Description: addQuoteHandler.Description()},
 		{Command: rquoteHandler.Command(), Description: rquoteHandler.Description()},
+		{Command: "seen", Description: "Show last seen and message stats for a user"},
 	}
 	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands}); err != nil {
 		slog.Error("failed to set bot commands", "error", err)
