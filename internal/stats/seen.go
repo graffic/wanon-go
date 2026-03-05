@@ -70,7 +70,7 @@ func (h *SeenHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upd
 	}
 
 	chart := renderDailyChart(start, 10, counts)
-	lastSeen := stats.LastMessageAt.UTC().Format("2006-01-02 15:04 UTC")
+	lastSeen := stats.LastMessageAt.Format("2006-01-02 15:04 MST")
 	name := stats.UserName
 	if name == "" {
 		name = userName
