@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -55,6 +56,8 @@ func run() error {
 	switch cmd {
 	case "server":
 		return runServer(cfg)
+	case "import-stats":
+		return runImportStats(cfg)
 	default:
 		// Default: run migrations and server
 		if err := storage.RunMigrations(&cfg.Database); err != nil {
@@ -62,6 +65,68 @@ func run() error {
 		}
 		return runServer(cfg)
 	}
+}
+
+// runImportStats processes a Telegram JSON export and imports message stats.
+//
+// Usage:
+//
+//	wanon import-stats <file> [--chat-id=<id>]
+//
+// The chat ID defaults to the one embedded in the export file.
+func runImportStats(cfg *config.Config) error {
+	args := os.Args[2:] // strip "import-stats"
+
+	var filePath string
+	var chatID int64
+
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--chat-id="):
+			raw := strings.TrimPrefix(arg, "--chat-id=")
+			n, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid --chat-id value %q: %w", raw, err)
+			}
+			chatID = n
+		default:
+			if filePath == "" {
+				filePath = arg
+			}
+		}
+	}
+
+	if filePath == "" {
+		return fmt.Errorf("usage: wanon import-stats <file> [--chat-id=<id>]")
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("import-stats: open file: %w", err)
+	}
+	defer f.Close()
+
+	db, err := storage.New(&cfg.Database)
+	if err != nil {
+		return fmt.Errorf("import-stats: connect to database: %w", err)
+	}
+	defer db.Close()
+
+	svc := stats.NewService(db.DB)
+
+	slog.Info("starting stats import", "file", filePath, "chat_id", chatID)
+	result, err := svc.ImportFromExport(context.Background(), chatID, f)
+	if err != nil {
+		return fmt.Errorf("import-stats: %w", err)
+	}
+
+	slog.Info("import complete",
+		"messages_processed", result.MessagesProcessed,
+		"buckets_written", result.BucketsWritten,
+		"users_updated", result.UsersUpdated,
+		"cutoff_utc", result.CutoffUTC,
+	)
+	return nil
 }
 
 func parseCommand() string {
