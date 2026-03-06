@@ -18,6 +18,7 @@ type Config struct {
 	Telegram              TelegramConfig `koanf:"telegram"`
 	Database              DatabaseConfig `koanf:"database"`
 	Cache                 CacheConfig    `koanf:"cache"`
+	Stats                 StatsConfig    `koanf:"stats"`
 	Logging               LoggingConfig  `koanf:"logging"`
 	AllowedChatIDs        []int64        `koanf:"allowed_chat_ids"`
 	AutoLeaveUnauthorized bool           `koanf:"auto_leave_unauthorized"`
@@ -44,6 +45,12 @@ type DatabaseConfig struct {
 type CacheConfig struct {
 	CleanInterval time.Duration `koanf:"clean_interval"` // e.g., "10m"
 	KeepDuration  time.Duration `koanf:"keep_duration"`  // e.g., "48h"
+}
+
+// StatsConfig holds configuration for stats commands.
+type StatsConfig struct {
+	TopDefaultLimit int `koanf:"top_default_limit"` // default number of users shown in !top (default: 5)
+	TopMaxLimit     int `koanf:"top_max_limit"`     // maximum allowed limit for !top (default: 20)
 }
 
 // LoggingConfig holds logging configuration.
@@ -120,6 +127,10 @@ func defaultConfig() Config {
 		Cache: CacheConfig{
 			CleanInterval: 10 * time.Minute,
 			KeepDuration:  48 * time.Hour,
+		},
+		Stats: StatsConfig{
+			TopDefaultLimit: 5,
+			TopMaxLimit:     20,
 		},
 		Logging: LoggingConfig{
 			Level: "info",

@@ -159,6 +159,52 @@ ORDER BY day ASC
 	return counts, nil
 }
 
+// TopUser represents a user's ranking in a top-N query.
+type TopUser struct {
+	UserName     string `gorm:"column:user_name"`
+	MessageCount int64  `gorm:"column:message_count"`
+}
+
+// GetTopUsersTotal returns the top N users by all-time message count in a chat.
+func (s *Service) GetTopUsersTotal(ctx context.Context, chatID int64, limit int) ([]TopUser, error) {
+	var users []TopUser
+	result := s.db.WithContext(ctx).
+		Raw(`
+SELECT user_name, total_messages AS message_count
+FROM user_message_stats
+WHERE chat_id = ?
+ORDER BY total_messages DESC
+LIMIT ?
+`, chatID, limit).
+		Scan(&users)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return users, nil
+}
+
+// GetTopUsersSince returns the top N users by message count since a given time.
+func (s *Service) GetTopUsersSince(ctx context.Context, chatID int64, since time.Time, limit int) ([]TopUser, error) {
+	var users []TopUser
+	result := s.db.WithContext(ctx).
+		Raw(`
+SELECT user_name, SUM(message_count) AS message_count
+FROM user_message_hourly
+WHERE chat_id = ?
+  AND bucket_ts >= ?
+GROUP BY user_id, user_name
+ORDER BY message_count DESC
+LIMIT ?
+`, chatID, since, limit).
+		Scan(&users)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return users, nil
+}
+
 func bucketTime(t time.Time) time.Time {
 	return t.UTC().Truncate(time.Hour)
 }
