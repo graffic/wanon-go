@@ -28,7 +28,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
 	s.Require().NoError(db.DB.Create(&cacheEntry).Error)
 
 	// Create addquote handler
-	addQuote := NewAddQuoteHandler(db.DB)
+	addQuote := NewAddQuoteHandler(nil, db.DB)
 
 	// Verify the quote can be built from cache
 	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 5)
@@ -47,7 +47,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
 	s.Assert().Len(quote.Entries, 1)
 
 	// Create rquote handler
-	rQuote := NewRQuoteHandler(db.DB)
+	rQuote := NewRQuoteHandler(nil, db.DB)
 
 	// Verify the quote can be retrieved
 	randomQuote, err := rQuote.store.GetRandomForChat(context.Background(), -100123)
@@ -98,7 +98,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_MultipleQuotes() {
 	}
 
 	// Create rquote handler
-	rQuote := NewRQuoteHandler(db.DB)
+	rQuote := NewRQuoteHandler(nil, db.DB)
 
 	// Verify count
 	count, err := rQuote.store.CountForChat(context.Background(), -100123)
@@ -187,7 +187,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_ReplyChain() {
 	s.Require().NoError(db.DB.Create(&cacheEntry3).Error)
 
 	// Create addquote handler
-	addQuote := NewAddQuoteHandler(db.DB)
+	addQuote := NewAddQuoteHandler(nil, db.DB)
 
 	// Build quote from message 3 (should include chain)
 	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 3)

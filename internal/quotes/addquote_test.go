@@ -9,19 +9,19 @@ import (
 )
 
 func (s *QuotesDBSuite) TestAddQuoteHandler_Command() {
-	handler := NewAddQuoteHandler(s.db.DB)
+	handler := NewAddQuoteHandler(nil, s.db.DB)
 
 	s.Assert().Equal("/addquote", handler.Command())
 }
 
 func (s *QuotesDBSuite) TestAddQuoteHandler_Description() {
-	handler := NewAddQuoteHandler(s.db.DB)
+	handler := NewAddQuoteHandler(nil, s.db.DB)
 
 	s.Assert().Equal("Add a quote by replying to a message", handler.Description())
 }
 
 func (s *QuotesDBSuite) TestAddQuoteHandler_buildFromReplyMessage() {
-	handler := NewAddQuoteHandler(s.db.DB)
+	handler := NewAddQuoteHandler(nil, s.db.DB)
 
 	replyMsg := &models.Message{
 		ID:   99,
@@ -44,7 +44,7 @@ func (s *QuotesDBSuite) TestAddQuoteHandler_buildFromReplyMessage() {
 }
 
 func (s *QuotesDBSuite) TestAddQuoteHandler_Handle_WithReply_MessageInCache() {
-	handler := NewAddQuoteHandler(s.db.DB)
+	handler := NewAddQuoteHandler(nil, s.db.DB)
 
 	// Add message to cache
 	cachedMsg := map[string]interface{}{
@@ -71,7 +71,7 @@ func (s *QuotesDBSuite) TestAddQuoteHandler_Handle_WithReply_MessageInCache() {
 }
 
 func (s *QuotesDBSuite) TestAddQuoteHandler_Handle_WithReply_MessageNotInCache() {
-	handler := NewAddQuoteHandler(s.db.DB)
+	handler := NewAddQuoteHandler(nil, s.db.DB)
 
 	// Test that buildFromReplyMessage works when message not in cache
 	replyMsg := &models.Message{

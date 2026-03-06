@@ -14,20 +14,29 @@ import (
 
 // SeenHandler handles the /seen and !seen commands.
 type SeenHandler struct {
+	b       *bot.Bot
 	service *Service
 	logger  *slog.Logger
 }
 
 // NewSeenHandler creates a new seen command handler.
-func NewSeenHandler(service *Service, logger *slog.Logger) *SeenHandler {
+func NewSeenHandler(b *bot.Bot, service *Service, logger *slog.Logger) *SeenHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &SeenHandler{service: service, logger: logger}
+	return &SeenHandler{b: b, service: service, logger: logger}
+}
+
+func (h *SeenHandler) Command() string {
+	return "seen"
+}
+
+func (h *SeenHandler) Description() string {
+	return "Show last seen and message stats for a user"
 }
 
 // Handle processes the /seen and !seen commands.
-func (h *SeenHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (h *SeenHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Update) {
 	msg := update.Message
 	if msg == nil {
 		return
@@ -40,7 +49,7 @@ func (h *SeenHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upd
 
 	userName, ok := extractSeenTarget(msg.Text)
 	if !ok {
-		h.reply(ctx, b, chatID, "Usage: /seen @username")
+		h.reply(ctx, chatID, "Usage: /seen @username")
 		return
 	}
 
@@ -49,11 +58,11 @@ func (h *SeenHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upd
 	stats, err := h.service.GetUserStatsByName(ctx, chatID, userName)
 	if err != nil {
 		h.logger.Error("failed to load user stats", "error", err)
-		h.reply(ctx, b, chatID, "Failed to load stats for that user.")
+		h.reply(ctx, chatID, "Failed to load stats for that user.")
 		return
 	}
 	if stats == nil {
-		h.reply(ctx, b, chatID, fmt.Sprintf("No stats found for @%s.", userName))
+		h.reply(ctx, chatID, fmt.Sprintf("No stats found for @%s.", userName))
 		return
 	}
 
@@ -65,7 +74,7 @@ func (h *SeenHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upd
 	counts, err := h.service.GetUserDailyCounts(ctx, chatID, stats.UserID, start, end)
 	if err != nil {
 		h.logger.Error("failed to load daily counts", "error", err)
-		h.reply(ctx, b, chatID, "Failed to load stats for that user.")
+		h.reply(ctx, chatID, "Failed to load stats for that user.")
 		return
 	}
 
@@ -83,11 +92,11 @@ func (h *SeenHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upd
 		chart,
 	)
 
-	h.reply(ctx, b, chatID, text)
+	h.reply(ctx, chatID, text)
 }
 
-func (h *SeenHandler) reply(ctx context.Context, b *bot.Bot, chatID int64, text string) {
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text}); err != nil {
+func (h *SeenHandler) reply(ctx context.Context, chatID int64, text string) {
+	if _, err := h.b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text}); err != nil {
 		h.logger.Error("failed to send message", "error", err)
 	}
 }

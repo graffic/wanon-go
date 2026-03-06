@@ -8,19 +8,19 @@ import (
 )
 
 func (s *QuotesDBSuite) TestRQuoteHandler_Command() {
-	handler := NewRQuoteHandler(s.db.DB)
+	handler := NewRQuoteHandler(nil, s.db.DB)
 
 	s.Assert().Equal("/rquote", handler.Command())
 }
 
 func (s *QuotesDBSuite) TestRQuoteHandler_Description() {
-	handler := NewRQuoteHandler(s.db.DB)
+	handler := NewRQuoteHandler(nil, s.db.DB)
 
 	s.Assert().Equal("Get a random quote from this chat", handler.Description())
 }
 
 func (s *QuotesDBSuite) TestRQuoteHandler_Handle_NoQuotes() {
-	handler := NewRQuoteHandler(s.db.DB)
+	handler := NewRQuoteHandler(nil, s.db.DB)
 
 	// Test that CountForChat returns 0 for empty chat
 	count, err := handler.store.CountForChat(context.Background(), -100123)
@@ -29,7 +29,7 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_NoQuotes() {
 }
 
 func (s *QuotesDBSuite) TestRQuoteHandler_Handle_OneQuote() {
-	handler := NewRQuoteHandler(s.db.DB)
+	handler := NewRQuoteHandler(nil, s.db.DB)
 
 	// Create a quote
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -71,7 +71,7 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_OneQuote() {
 }
 
 func (s *QuotesDBSuite) TestRQuoteHandler_Handle_MultipleQuotes() {
-	handler := NewRQuoteHandler(s.db.DB)
+	handler := NewRQuoteHandler(nil, s.db.DB)
 
 	// Create multiple quotes
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -109,7 +109,7 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_MultipleQuotes() {
 }
 
 func (s *QuotesDBSuite) TestRQuoteHandler_Handle_DifferentChat() {
-	handler := NewRQuoteHandler(s.db.DB)
+	handler := NewRQuoteHandler(nil, s.db.DB)
 
 	// Create quote in different chat
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}

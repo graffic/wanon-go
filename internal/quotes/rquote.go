@@ -12,14 +12,16 @@ import (
 // RQuoteHandler handles the /rquote command
 // This ports the Quotes.RQuote functionality from Elixir
 type RQuoteHandler struct {
+	b        *bot.Bot
 	db       *gorm.DB
 	store    *Store
 	renderer *Renderer
 }
 
 // NewRQuoteHandler creates a new rquote handler
-func NewRQuoteHandler(db *gorm.DB) *RQuoteHandler {
+func NewRQuoteHandler(b *bot.Bot, db *gorm.DB) *RQuoteHandler {
 	return &RQuoteHandler{
+		b:        b,
 		db:       db,
 		store:    NewStore(db),
 		renderer: NewRenderer(),
@@ -28,7 +30,7 @@ func NewRQuoteHandler(db *gorm.DB) *RQuoteHandler {
 
 // Handle processes the /rquote command
 // This signature matches bot.HandlerFunc
-func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (h *RQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Update) {
 	msg := update.Message
 	if msg == nil {
 		return
@@ -45,7 +47,7 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 	}
 
 	if count == 0 {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		_, err := h.b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   "No quotes found in this chat. Add some with /addquote!",
 		})
@@ -63,7 +65,7 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 	}
 
 	if quote == nil {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		_, err := h.b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   "No quotes found in this chat.",
 		})
@@ -81,7 +83,7 @@ func (h *RQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.U
 	}
 
 	// Send the quote
-	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+	_, err = h.b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: chatID,
 		Text:   rendered,
 	})

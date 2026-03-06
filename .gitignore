@@ -3,3 +3,4 @@
 !migrations/*
 wanon
 .vscode/settings.json
+coverage.out

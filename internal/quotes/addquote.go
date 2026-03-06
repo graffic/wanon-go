@@ -14,14 +14,16 @@ import (
 // AddQuoteHandler handles the /addquote command
 // This ports the Quotes.AddQuote functionality from Elixir
 type AddQuoteHandler struct {
+	b       *bot.Bot
 	db      *gorm.DB
 	builder *Builder
 	store   *Store
 }
 
 // NewAddQuoteHandler creates a new addquote handler
-func NewAddQuoteHandler(db *gorm.DB) *AddQuoteHandler {
+func NewAddQuoteHandler(b *bot.Bot, db *gorm.DB) *AddQuoteHandler {
 	return &AddQuoteHandler{
+		b:       b,
 		db:      db,
 		builder: NewBuilder(db),
 		store:   NewStore(db),
@@ -30,7 +32,7 @@ func NewAddQuoteHandler(db *gorm.DB) *AddQuoteHandler {
 
 // Handle processes the /addquote command
 // This signature matches bot.HandlerFunc
-func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (h *AddQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Update) {
 	msg := update.Message
 	if msg == nil {
 		return
@@ -41,7 +43,7 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 
 	// Check if message is a reply
 	if msg.ReplyToMessage == nil {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		_, err := h.b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   "Please reply to a message to add it as a quote.",
 		})
@@ -59,7 +61,7 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 		// This handles the case where the message is recent but cache missed
 		result, err = h.buildFromReplyMessage(replyMsg)
 		if err != nil {
-			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			_, err := h.b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: chatID,
 				Text:   "Could not build quote. The message may be too old or not in cache.",
 			})
@@ -81,7 +83,7 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, b *bot.Bot, update *models
 
 	// Send confirmation
 	confirmation := fmt.Sprintf("Quote #%d added with %d entries!", quote.ID, len(quote.Entries))
-	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+	_, err = h.b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: chatID,
 		Text:   confirmation,
 	})

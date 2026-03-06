@@ -15,17 +15,18 @@ import (
 
 // TopHandler handles the !top command.
 type TopHandler struct {
+	b       *bot.Bot
 	service *Service
 	config  config.StatsConfig
 	logger  *slog.Logger
 }
 
 // NewTopHandler creates a new top command handler.
-func NewTopHandler(service *Service, cfg config.StatsConfig, logger *slog.Logger) *TopHandler {
+func NewTopHandler(b *bot.Bot, service *Service, cfg config.StatsConfig, logger *slog.Logger) *TopHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &TopHandler{service: service, config: cfg, logger: logger}
+	return &TopHandler{b: b, service: service, config: cfg, logger: logger}
 }
 
 // Command returns the command name for Telegram registration.
@@ -39,7 +40,7 @@ func (h *TopHandler) Description() string {
 }
 
 // Handle processes the !top command.
-func (h *TopHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (h *TopHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Update) {
 	msg := update.Message
 	if msg == nil {
 		return
@@ -52,7 +53,7 @@ func (h *TopHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upda
 
 	limit, err := extractTopLimit(msg.Text, h.config.TopDefaultLimit, h.config.TopMaxLimit)
 	if err != nil {
-		h.reply(ctx, b, chatID, err.Error())
+		h.reply(ctx, chatID, err.Error())
 		return
 	}
 
@@ -71,17 +72,17 @@ func (h *TopHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Upda
 	for _, e := range []error{errToday, errWeek, errMonth, errTotal} {
 		if e != nil {
 			h.logger.Error("failed to load top users", "error", e)
-			h.reply(ctx, b, chatID, "Failed to load top users.")
+			h.reply(ctx, chatID, "Failed to load top users.")
 			return
 		}
 	}
 
 	text := formatTopResults(limit, todayStart, weekStart, monthStart, today, week, month, total)
-	h.reply(ctx, b, chatID, text)
+	h.reply(ctx, chatID, text)
 }
 
-func (h *TopHandler) reply(ctx context.Context, b *bot.Bot, chatID int64, text string) {
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text}); err != nil {
+func (h *TopHandler) reply(ctx context.Context, chatID int64, text string) {
+	if _, err := h.b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text}); err != nil {
 		h.logger.Error("failed to send message", "error", err)
 	}
 }
