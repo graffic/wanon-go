@@ -25,13 +25,6 @@ type exportFile struct {
 	Messages []exportMessage `json:"messages"`
 }
 
-// hourlyKey identifies a unique (chatID, userID, bucketTS) combination.
-type hourlyKey struct {
-	chatID   int64
-	userID   int64
-	bucketTS time.Time
-}
-
 // ImportResult summarises the outcome of an import run.
 type ImportResult struct {
 	MessagesProcessed int
@@ -62,8 +55,16 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 		chatID = export.ID
 	}
 
-	// --- pass 1: find max message timestamp (type==message only) -----------
+	// --- single pass: aggregate counts per (userID, bucket), track max time -
+	type userBucket struct {
+		userName string
+		count    int64
+	}
+	buckets := make(map[time.Time]map[int64]*userBucket)
+
 	var maxTime time.Time
+	processed := 0
+
 	for i := range export.Messages {
 		m := &export.Messages[i]
 		if m.Type != "message" {
@@ -76,6 +77,26 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 		if t.After(maxTime) {
 			maxTime = t
 		}
+
+		userID, ok := parseFromID(m.FromID)
+		if !ok || m.From == "" {
+			continue
+		}
+
+		bucketTS := t.UTC().Truncate(time.Hour)
+		users := buckets[bucketTS]
+		if users == nil {
+			users = make(map[int64]*userBucket)
+			buckets[bucketTS] = users
+		}
+		ub := users[userID]
+		if ub == nil {
+			ub = &userBucket{userName: m.From}
+			users[userID] = ub
+		}
+		ub.count++
+		ub.userName = m.From
+		processed++
 	}
 
 	if maxTime.IsZero() {
@@ -83,51 +104,8 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 	}
 
 	cutoffUTC := maxTime.Truncate(time.Hour)
-
-	// --- pass 2: aggregate counts per (chatID, userID, bucket) -------------
-	type bucketEntry struct {
-		userName string
-		count    int64
-	}
-	buckets := make(map[hourlyKey]*bucketEntry)
-
-	processed := 0
-	for i := range export.Messages {
-		m := &export.Messages[i]
-		if m.Type != "message" {
-			continue
-		}
-		t, err := parseExportTime(m)
-		if err != nil {
-			continue
-		}
-		// Only include messages whose hourly bucket is within the last complete hour.
-		// We compare bucket timestamps so that any message within the cutoff hour
-		// is included, regardless of its exact minute/second.
-		if t.UTC().Truncate(time.Hour).After(cutoffUTC) {
-			continue
-		}
-
-		userID, ok := parseFromID(m.FromID)
-		if !ok || m.From == "" {
-			continue
-		}
-
-		key := hourlyKey{
-			chatID:   chatID,
-			userID:   userID,
-			bucketTS: t.UTC().Truncate(time.Hour),
-		}
-		e := buckets[key]
-		if e == nil {
-			e = &bucketEntry{userName: m.From}
-			buckets[key] = e
-		}
-		e.count++
-		// keep the most recent user_name seen for that bucket
-		e.userName = m.From
-		processed++
-	}
+	// remove the one incomplete hour (the hour containing the latest message)
+	delete(buckets, cutoffUTC.Add(time.Hour))
 
 	if len(buckets) == 0 {
 		return &ImportResult{MessagesProcessed: processed, CutoffUTC: cutoffUTC}, nil
@@ -135,12 +113,12 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 
 	// --- compute affected bucket range -------------------------------------
 	var minBucket, maxBucket time.Time
-	for k := range buckets {
-		if minBucket.IsZero() || k.bucketTS.Before(minBucket) {
-			minBucket = k.bucketTS
+	for bucketTS := range buckets {
+		if minBucket.IsZero() || bucketTS.Before(minBucket) {
+			minBucket = bucketTS
 		}
-		if maxBucket.IsZero() || k.bucketTS.After(maxBucket) {
-			maxBucket = k.bucketTS
+		if maxBucket.IsZero() || bucketTS.After(maxBucket) {
+			maxBucket = bucketTS
 		}
 	}
 
@@ -148,6 +126,10 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 	tx := s.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return nil, fmt.Errorf("stats import: begin tx: %w", tx.Error)
+	}
+	if err := lockChatTx(tx, chatID); err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("stats import: lock chat: %w", err)
 	}
 
 	// Delete existing hourly rows in the affected range for this chat.
@@ -160,14 +142,16 @@ func (s *Service) ImportFromExport(ctx context.Context, chatID int64, r io.Reade
 	}
 
 	// Insert aggregated buckets.
-	for k, e := range buckets {
-		if err := tx.Exec(
-			`INSERT INTO user_message_hourly (chat_id, user_id, user_name, bucket_ts, message_count, updated_at)
-			 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-			k.chatID, k.userID, e.userName, k.bucketTS, e.count,
-		).Error; err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("stats import: insert hourly: %w", err)
+	for bucketTS, users := range buckets {
+		for userID, ub := range users {
+			if err := tx.Exec(
+				`INSERT INTO user_message_hourly (chat_id, user_id, user_name, bucket_ts, message_count, updated_at)
+				 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+				chatID, userID, ub.userName, bucketTS, ub.count,
+			).Error; err != nil {
+				tx.Rollback()
+				return nil, fmt.Errorf("stats import: insert hourly: %w", err)
+			}
 		}
 	}
 

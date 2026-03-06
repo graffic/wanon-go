@@ -7,6 +7,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const statsAdvisoryLockNamespace int64 = 0x73746174 // "stat"
+
 const userStatsUpsertSQL = `
 INSERT INTO user_message_stats (
     chat_id,
@@ -60,6 +62,10 @@ func (s *Service) RecordMessage(ctx context.Context, chatID, userID int64, userN
 	if tx.Error != nil {
 		return tx.Error
 	}
+	if err := lockChatTx(tx, chatID); err != nil {
+		tx.Rollback()
+		return err
+	}
 
 	if err := tx.Exec(userStatsUpsertSQL, chatID, userID, userName, messageTime).Error; err != nil {
 		tx.Rollback()
@@ -72,6 +78,20 @@ func (s *Service) RecordMessage(ctx context.Context, chatID, userID int64, userN
 	}
 
 	return tx.Commit().Error
+}
+
+func lockChatTx(tx *gorm.DB, chatID int64) error {
+	if tx == nil {
+		return nil
+	}
+	if tx.Dialector == nil || tx.Dialector.Name() != "postgres" {
+		return nil
+	}
+
+	// Serialize updates per chat so imports and live updates can't clobber each
+	// other (e.g. importer recompute overwriting concurrent RecordMessage totals).
+	lockKey := chatID ^ (statsAdvisoryLockNamespace << 32)
+	return tx.Exec(`SELECT pg_advisory_xact_lock(?)`, lockKey).Error
 }
 
 // UserStats represents summary stats for a user.
