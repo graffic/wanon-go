@@ -99,11 +99,8 @@ func extractTopLimit(text string, defaultLimit, maxLimit int) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("Usage: !top [number]")
 	}
-	if n < 1 {
-		return 0, fmt.Errorf("Usage: !top [number] (minimum 1)")
-	}
-	if n > maxLimit {
-		return 0, fmt.Errorf("Maximum is %d.", maxLimit)
+	if n < 1 || n > maxLimit {
+		return 0, fmt.Errorf("Usage: !top [number] (minimum 1, maximum %d)", maxLimit)
 	}
 	return n, nil
 }
