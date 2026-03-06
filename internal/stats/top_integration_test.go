@@ -99,6 +99,49 @@ func TestGetTopUsersSince(t *testing.T) {
 	}
 }
 
+func TestGetTopUsersSinceMergesNameChanges(t *testing.T) {
+	tdb := testutils.NewTestDB(t)
+	svc := stats.NewService(tdb.DB)
+	ctx := context.Background()
+
+	chatID := int64(-1010)
+	now := time.Now().UTC()
+	// Place messages in two different hourly buckets so they create separate
+	// hourly rows with different user_name values for the same user_id.
+	bucket1 := now.Add(-2 * time.Hour)
+	bucket2 := now
+
+	// Same user_id (42) but different names in each bucket.
+	for i := 0; i < 3; i++ {
+		if err := svc.RecordMessage(ctx, chatID, 42, "Alice Wonderland", bucket1); err != nil {
+			t.Fatalf("RecordMessage: %v", err)
+		}
+	}
+	for i := 0; i < 4; i++ {
+		if err := svc.RecordMessage(ctx, chatID, 42, "alicew", bucket2); err != nil {
+			t.Fatalf("RecordMessage: %v", err)
+		}
+	}
+
+	since := bucket1.Truncate(time.Hour)
+	result, err := svc.GetTopUsersSince(ctx, chatID, since, 10)
+	if err != nil {
+		t.Fatalf("GetTopUsersSince: %v", err)
+	}
+
+	// The user should appear as a single entry with combined count.
+	if len(result) != 1 {
+		t.Fatalf("expected 1 user (merged), got %d: %+v", len(result), result)
+	}
+	if result[0].MessageCount != 7 {
+		t.Errorf("expected 7 messages, got %d", result[0].MessageCount)
+	}
+	// Should use the most recent name.
+	if result[0].UserName != "alicew" {
+		t.Errorf("expected most recent name 'alicew', got %q", result[0].UserName)
+	}
+}
+
 func TestGetTopUsersSinceEmpty(t *testing.T) {
 	tdb := testutils.NewTestDB(t)
 	svc := stats.NewService(tdb.DB)

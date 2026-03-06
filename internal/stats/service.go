@@ -189,11 +189,16 @@ func (s *Service) GetTopUsersSince(ctx context.Context, chatID int64, since time
 	var users []TopUser
 	result := s.db.WithContext(ctx).
 		Raw(`
-SELECT user_name, SUM(message_count) AS message_count
-FROM user_message_hourly
-WHERE chat_id = ?
-  AND bucket_ts >= ?
-GROUP BY user_id, user_name
+SELECT (SELECT h2.user_name
+        FROM user_message_hourly h2
+        WHERE h2.chat_id = h.chat_id AND h2.user_id = h.user_id
+        ORDER BY h2.bucket_ts DESC
+        LIMIT 1) AS user_name,
+       SUM(message_count) AS message_count
+FROM user_message_hourly h
+WHERE h.chat_id = ?
+  AND h.bucket_ts >= ?
+GROUP BY h.chat_id, h.user_id
 ORDER BY message_count DESC
 LIMIT ?
 `, chatID, since, limit).
