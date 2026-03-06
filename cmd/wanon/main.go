@@ -13,9 +13,9 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/graffic/wanon-go/internal/bot/middleware"
 	"github.com/graffic/wanon-go/internal/cache"
 	"github.com/graffic/wanon-go/internal/config"
+	"github.com/graffic/wanon-go/internal/middleware"
 	"github.com/graffic/wanon-go/internal/quotes"
 	"github.com/graffic/wanon-go/internal/stats"
 	"github.com/graffic/wanon-go/internal/storage"
@@ -191,8 +191,8 @@ func runServer(cfg *config.Config) error {
 	}
 
 	// Register command handlers
-	addQuoteHandler := quotes.NewAddQuoteHandler(b, db.DB)
-	rquoteHandler := quotes.NewRQuoteHandler(b, db.DB)
+	addQuoteHandler := quotes.NewAddQuoteHandler(b, db.DB, slog.Default())
+	rquoteHandler := quotes.NewRQuoteHandler(b, db.DB, slog.Default())
 	seenHandler := stats.NewSeenHandler(b, statsService, slog.Default())
 	topHandler := stats.NewTopHandler(b, statsService, cfg.Stats, slog.Default())
 

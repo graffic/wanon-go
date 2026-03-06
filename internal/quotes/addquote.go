@@ -8,23 +8,26 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	internalBot "github.com/graffic/wanon-go/internal/bot"
 	"gorm.io/gorm"
 )
 
 // AddQuoteHandler handles the /addquote command
 // This ports the Quotes.AddQuote functionality from Elixir
 type AddQuoteHandler struct {
-	b       *bot.Bot
+	internalBot.BaseHandler
 	db      *gorm.DB
 	builder *Builder
 	store   *Store
 }
 
-// NewAddQuoteHandler creates a new addquote handler
-func NewAddQuoteHandler(b *bot.Bot, db *gorm.DB) *AddQuoteHandler {
+func NewAddQuoteHandler(b internalBot.BotClient, db *gorm.DB, logger *slog.Logger) *AddQuoteHandler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &AddQuoteHandler{
-		b:       b,
-		db:      db,
+		BaseHandler: internalBot.NewBaseHandler(b, logger),
+		db:          db,
 		builder: NewBuilder(db),
 		store:   NewStore(db),
 	}
@@ -39,17 +42,11 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models
 	}
 
 	chatID := msg.Chat.ID
-	slog.Info("executing /addquote command", "chat_id", chatID, "user_id", msg.From.ID)
+	h.Logger.Info("executing /addquote command", "chat_id", chatID, "user_id", msg.From.ID)
 
 	// Check if message is a reply
 	if msg.ReplyToMessage == nil {
-		_, err := h.b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   "Please reply to a message to add it as a quote.",
-		})
-		if err != nil {
-			slog.Error("failed to send message", "error", err)
-		}
+		h.Reply(ctx, chatID, "Please reply to a message to add it as a quote.")
 		return
 	}
 
@@ -61,13 +58,7 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models
 		// This handles the case where the message is recent but cache missed
 		result, err = h.buildFromReplyMessage(replyMsg)
 		if err != nil {
-			_, err := h.b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID: chatID,
-				Text:   "Could not build quote. The message may be too old or not in cache.",
-			})
-			if err != nil {
-				slog.Error("failed to send message", "error", err)
-			}
+			h.Reply(ctx, chatID, "Could not build quote. The message may be too old or not in cache.")
 			return
 		}
 	}
@@ -77,19 +68,13 @@ func (h *AddQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models
 
 	quote, err := h.store.StoreFromBuild(ctx, creator, result)
 	if err != nil {
-		slog.Error("failed to store quote", "error", err)
+		h.Logger.Error("failed to store quote", "error", err)
 		return
 	}
 
 	// Send confirmation
 	confirmation := fmt.Sprintf("Quote #%d added with %d entries!", quote.ID, len(quote.Entries))
-	_, err = h.b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text:   confirmation,
-	})
-	if err != nil {
-		slog.Error("failed to send message", "error", err)
-	}
+	h.Reply(ctx, chatID, confirmation)
 }
 
 // buildFromReplyMessage builds a quote result from a reply message directly

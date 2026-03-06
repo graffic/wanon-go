@@ -86,7 +86,7 @@ func (tdb *TestDB) RunMigrations(connStr string) error {
 	migrationsPath := filepath.Join(dir, "..", "..", "migrations")
 
 	// Run tern migrate using the connection string and migrations path
-	cmd := exec.Command("go","tool", "tern", "migrate", "--conn-string", connStr, "--migrations", migrationsPath)
+	cmd := exec.Command("tern", "migrate", "--conn-string", connStr, "--migrations", migrationsPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tern migrate failed: %w\nOutput: %s", err, string(output))

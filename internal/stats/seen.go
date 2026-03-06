@@ -10,21 +10,21 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	internalBot "github.com/graffic/wanon-go/internal/bot"
 )
 
 // SeenHandler handles the /seen and !seen commands.
 type SeenHandler struct {
-	b       *bot.Bot
+	internalBot.BaseHandler
 	service *Service
-	logger  *slog.Logger
 }
 
 // NewSeenHandler creates a new seen command handler.
-func NewSeenHandler(b *bot.Bot, service *Service, logger *slog.Logger) *SeenHandler {
+func NewSeenHandler(b internalBot.BotClient, service *Service, logger *slog.Logger) *SeenHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &SeenHandler{b: b, service: service, logger: logger}
+	return &SeenHandler{BaseHandler: internalBot.NewBaseHandler(b, logger), service: service}
 }
 
 func (h *SeenHandler) Command() string {
@@ -49,20 +49,20 @@ func (h *SeenHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upd
 
 	userName, ok := extractSeenTarget(msg.Text)
 	if !ok {
-		h.reply(ctx, chatID, "Usage: /seen @username")
+		h.Reply(ctx, chatID, "Usage: /seen @username")
 		return
 	}
 
-	h.logger.Info("executing seen command", "chat_id", chatID, "user_name", userName)
+	h.Logger.Info("executing seen command", "chat_id", chatID, "user_name", userName)
 
 	stats, err := h.service.GetUserStatsByName(ctx, chatID, userName)
 	if err != nil {
-		h.logger.Error("failed to load user stats", "error", err)
-		h.reply(ctx, chatID, "Failed to load stats for that user.")
+		h.Logger.Error("failed to load user stats", "error", err)
+		h.Reply(ctx, chatID, "Failed to load stats for that user.")
 		return
 	}
 	if stats == nil {
-		h.reply(ctx, chatID, fmt.Sprintf("No stats found for @%s.", userName))
+		h.Reply(ctx, chatID, fmt.Sprintf("No stats found for @%s.", userName))
 		return
 	}
 
@@ -73,13 +73,13 @@ func (h *SeenHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upd
 
 	counts, err := h.service.GetUserDailyCounts(ctx, chatID, stats.UserID, start, end)
 	if err != nil {
-		h.logger.Error("failed to load daily counts", "error", err)
-		h.reply(ctx, chatID, "Failed to load stats for that user.")
+		h.Logger.Error("failed to load daily counts", "error", err)
+		h.Reply(ctx, chatID, "Failed to load stats for that user.")
 		return
 	}
 
 	chart := renderDailyChart(start, 10, counts)
-	lastSeen := stats.LastMessageAt.Format("2006-01-02 15:04 MST")
+	lastSeen := stats.LastMessageAt.UTC().Format("2006-01-02 15:04 MST")
 	name := stats.UserName
 	if name == "" {
 		name = userName
@@ -92,13 +92,7 @@ func (h *SeenHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upd
 		chart,
 	)
 
-	h.reply(ctx, chatID, text)
-}
-
-func (h *SeenHandler) reply(ctx context.Context, chatID int64, text string) {
-	if _, err := h.b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text}); err != nil {
-		h.logger.Error("failed to send message", "error", err)
-	}
+	h.Reply(ctx, chatID, text)
 }
 
 func extractSeenTarget(text string) (string, bool) {

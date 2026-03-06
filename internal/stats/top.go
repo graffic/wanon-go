@@ -10,23 +10,26 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	internalBot "github.com/graffic/wanon-go/internal/bot"
 	"github.com/graffic/wanon-go/internal/config"
 )
 
-// TopHandler handles the !top command.
 type TopHandler struct {
-	b       *bot.Bot
+	internalBot.BaseHandler
 	service *Service
 	config  config.StatsConfig
-	logger  *slog.Logger
 }
 
 // NewTopHandler creates a new top command handler.
-func NewTopHandler(b *bot.Bot, service *Service, cfg config.StatsConfig, logger *slog.Logger) *TopHandler {
+func NewTopHandler(b internalBot.BotClient, service *Service, cfg config.StatsConfig, logger *slog.Logger) *TopHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &TopHandler{b: b, service: service, config: cfg, logger: logger}
+	return &TopHandler{
+		BaseHandler: internalBot.NewBaseHandler(b, logger),
+		service:     service,
+		config:      cfg,
+	}
 }
 
 // Command returns the command name for Telegram registration.
@@ -53,11 +56,11 @@ func (h *TopHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upda
 
 	limit, err := extractTopLimit(msg.Text, h.config.TopDefaultLimit, h.config.TopMaxLimit)
 	if err != nil {
-		h.reply(ctx, chatID, err.Error())
+		h.Reply(ctx, chatID, err.Error())
 		return
 	}
 
-	h.logger.Info("executing top command", "chat_id", chatID, "limit", limit)
+	h.Logger.Info("executing top command", "chat_id", chatID, "limit", limit)
 
 	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -71,20 +74,14 @@ func (h *TopHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upda
 
 	for _, e := range []error{errToday, errWeek, errMonth, errTotal} {
 		if e != nil {
-			h.logger.Error("failed to load top users", "error", e)
-			h.reply(ctx, chatID, "Failed to load top users.")
+			h.Logger.Error("failed to load top users", "error", e)
+			h.Reply(ctx, chatID, "Failed to load top users.")
 			return
 		}
 	}
 
 	text := formatTopResults(limit, todayStart, weekStart, monthStart, today, week, month, total)
-	h.reply(ctx, chatID, text)
-}
-
-func (h *TopHandler) reply(ctx context.Context, chatID int64, text string) {
-	if _, err := h.b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text}); err != nil {
-		h.logger.Error("failed to send message", "error", err)
-	}
+	h.Reply(ctx, chatID, text)
 }
 
 // extractTopLimit parses the optional numeric argument from the command text.
