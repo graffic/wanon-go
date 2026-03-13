@@ -55,8 +55,8 @@ func (h *TopHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upda
 	}
 
 	limit, err := extractTopLimit(msg.Text, h.config.TopDefaultLimit, h.config.TopMaxLimit)
-	if err != nil {
-		h.Reply(ctx, chatID, err.Error())
+	if err != "" {
+		h.Reply(ctx, chatID, err)
 		return
 	}
 
@@ -87,20 +87,20 @@ func (h *TopHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Upda
 // extractTopLimit parses the optional numeric argument from the command text.
 // Returns the configured default if no argument is given, or an error for
 // invalid input.
-func extractTopLimit(text string, defaultLimit, maxLimit int) (int, error) {
+func extractTopLimit(text string, defaultLimit, maxLimit int) (int, string) {
 	fields := strings.Fields(text)
 	if len(fields) < 2 {
-		return defaultLimit, nil
+		return defaultLimit, ""
 	}
 
 	n, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return 0, fmt.Errorf("Usage: !top [number]")
+		return 0, "Usage: !top [number]"
 	}
 	if n < 1 || n > maxLimit {
-		return 0, fmt.Errorf("Usage: !top [number] (minimum 1, maximum %d)", maxLimit)
+		return 0, fmt.Sprintf("Usage: !top [number] (minimum 1, maximum %d)", maxLimit)
 	}
-	return n, nil
+	return n, ""
 }
 
 // mondayOf returns the Monday 00:00 UTC of the week containing t.

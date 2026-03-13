@@ -4,11 +4,27 @@ import (
 	"context"
 	"encoding/json"
 
+	"testing"
+
+	"github.com/graffic/wanon-go/internal/testutils"
+	"github.com/stretchr/testify/suite"
 	"gorm.io/datatypes"
 )
 
-func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
-	db := s.db
+type IntegrationDBSuite struct {
+	testutils.DBSuite
+}
+
+func (s *IntegrationDBSuite) SetupSuite() {
+	s.DBSuite.SetupSuite()
+}
+
+func TestIntegrationDBSuite(t *testing.T) {
+	suite.Run(t, new(IntegrationDBSuite))
+}
+
+func (s *IntegrationDBSuite) TestQuotesIntegration_AddAndRetrieve() {
+	db := s.DB
 
 	// Setup cache with a message
 	cachedMsg := map[string]interface{}{
@@ -25,10 +41,10 @@ func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msgJSON),
 	}
-	s.Require().NoError(db.DB.Create(&cacheEntry).Error)
+	s.Require().NoError(db.Create(&cacheEntry).Error)
 
 	// Create addquote handler
-	addQuote := NewAddQuoteHandler(nil, db.DB, nil)
+	addQuote := NewAddQuoteHandler(nil, db, nil)
 
 	// Verify the quote can be built from cache
 	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 5)
@@ -47,7 +63,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
 	s.Assert().Len(quote.Entries, 1)
 
 	// Create rquote handler
-	rQuote := NewRQuoteHandler(nil, db.DB, nil)
+	rQuote := NewRQuoteHandler(nil, db, nil)
 
 	// Verify the quote can be retrieved
 	randomQuote, err := rQuote.store.GetRandomForChat(context.Background(), -100123)
@@ -62,8 +78,8 @@ func (s *QuotesDBSuite) TestQuotesIntegration_AddAndRetrieve() {
 	s.Assert().Contains(rendered, "Message to quote")
 }
 
-func (s *QuotesDBSuite) TestQuotesIntegration_MultipleQuotes() {
-	db := s.db
+func (s *IntegrationDBSuite) TestQuotesIntegration_MultipleQuotes() {
+	db := s.DB
 
 	// Create multiple quotes
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -94,11 +110,11 @@ func (s *QuotesDBSuite) TestQuotesIntegration_MultipleQuotes() {
 				{Order: 0, Message: datatypes.JSON(messageJSON)},
 			},
 		}
-		s.Require().NoError(db.DB.Create(&quote).Error)
+		s.Require().NoError(db.Create(&quote).Error)
 	}
 
 	// Create rquote handler
-	rQuote := NewRQuoteHandler(nil, db.DB, nil)
+	rQuote := NewRQuoteHandler(nil, db, nil)
 
 	// Verify count
 	count, err := rQuote.store.CountForChat(context.Background(), -100123)
@@ -127,8 +143,8 @@ func (s *QuotesDBSuite) TestQuotesIntegration_MultipleQuotes() {
 	s.Assert().GreaterOrEqual(len(foundQuotes), 1)
 }
 
-func (s *QuotesDBSuite) TestQuotesIntegration_ReplyChain() {
-	db := s.db
+func (s *IntegrationDBSuite) TestQuotesIntegration_ReplyChain() {
+	db := s.DB
 
 	// Create a chain of messages in cache
 	msg1 := map[string]interface{}{
@@ -161,7 +177,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_ReplyChain() {
 		Date:      1609459000,
 		Message:   datatypes.JSON(msg1JSON),
 	}
-	s.Require().NoError(db.DB.Create(&cacheEntry1).Error)
+	s.Require().NoError(db.Create(&cacheEntry1).Error)
 
 	// msg3 replies to msg2
 	msg2JSON, _ := json.Marshal(msg2)
@@ -173,7 +189,7 @@ func (s *QuotesDBSuite) TestQuotesIntegration_ReplyChain() {
 		Date:      1609459050,
 		Message:   datatypes.JSON(msg2JSON),
 	}
-	s.Require().NoError(db.DB.Create(&cacheEntry2).Error)
+	s.Require().NoError(db.Create(&cacheEntry2).Error)
 
 	msg3JSON, _ := json.Marshal(msg3)
 	replyID3 := int64(2)
@@ -184,10 +200,10 @@ func (s *QuotesDBSuite) TestQuotesIntegration_ReplyChain() {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msg3JSON),
 	}
-	s.Require().NoError(db.DB.Create(&cacheEntry3).Error)
+	s.Require().NoError(db.Create(&cacheEntry3).Error)
 
 	// Create addquote handler
-	addQuote := NewAddQuoteHandler(nil, db.DB, nil)
+	addQuote := NewAddQuoteHandler(nil, db, nil)
 
 	// Build quote from message 3 (should include chain)
 	result, err := addQuote.builder.BuildFrom(context.Background(), -100123, 3)

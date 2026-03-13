@@ -82,7 +82,11 @@ func (s *Service) Add(ctx context.Context, msg *Message) error {
 	// Use upsert to handle conflicts
 	return s.db.WithContext(ctx).
 		Where("chat_id = ? AND message_id = ?", entry.ChatID, entry.MessageID).
-		Assign(entry).
+		Assign(map[string]interface{}{
+			"reply_id": entry.ReplyID,
+			"date":     entry.Date,
+			"message":  entry.Message,
+		}).
 		FirstOrCreate(entry).Error
 }
 
@@ -101,8 +105,18 @@ func (s *Service) Edit(ctx context.Context, msg *Message) error {
 		return result.Error
 	}
 
+	var existingMsg Message
+	if err := json.Unmarshal(entry.Message, &existingMsg); err != nil {
+		return err
+	}
+
+	existingMsg.Text = msg.Text
+	if msg.From != nil {
+		existingMsg.From = msg.From
+	}
+
 	// Update the message JSON
-	messageJSON, err := json.Marshal(msg)
+	messageJSON, err := json.Marshal(existingMsg)
 	if err != nil {
 		return err
 	}
@@ -124,23 +138,6 @@ func (s *Service) Get(ctx context.Context, chatID, messageID int64) (*CacheEntry
 	return &entry, nil
 }
 
-// GetByReply retrieves cached messages that reply to a specific message
-func (s *Service) GetByReply(ctx context.Context, chatID, replyID int64) ([]CacheEntry, error) {
-	var entries []CacheEntry
-	err := s.db.WithContext(ctx).
-		Where("chat_id = ? AND reply_id = ?", chatID, replyID).
-		Order("date ASC").
-		Find(&entries).Error
-	return entries, err
-}
-
-// Clean removes cache entries older than the specified duration
-func (s *Service) Clean(ctx context.Context, keepDuration time.Duration) error {
-	cutoff := time.Now().Add(-keepDuration).Unix()
-	return s.db.WithContext(ctx).
-		Where("date < ?", cutoff).
-		Delete(&CacheEntry{}).Error
-}
 
 // GetChain retrieves a chain of messages starting from a given message ID
 // It follows reply chains recursively

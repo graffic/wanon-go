@@ -3,24 +3,42 @@ package quotes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
+	"testing"
+
+	"github.com/graffic/wanon-go/internal/testutils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"gorm.io/datatypes"
 )
 
-func (s *QuotesDBSuite) TestRQuoteHandler_Command() {
-	handler := NewRQuoteHandler(nil, s.db.DB, nil)
-
-	s.Assert().Equal("/rquote", handler.Command())
+type RQuoteDBSuite struct {
+	testutils.DBSuite
 }
 
-func (s *QuotesDBSuite) TestRQuoteHandler_Description() {
-	handler := NewRQuoteHandler(nil, s.db.DB, nil)
-
-	s.Assert().Equal("Get a random quote from this chat", handler.Description())
+func (s *RQuoteDBSuite) SetupSuite() {
+	s.DBSuite.SetupSuite()
 }
 
-func (s *QuotesDBSuite) TestRQuoteHandler_Handle_NoQuotes() {
-	handler := NewRQuoteHandler(nil, s.db.DB, nil)
+func TestRQuoteDBSuite(t *testing.T) {
+	suite.Run(t, new(RQuoteDBSuite))
+}
+
+func TestRQuoteHandler_Command(t *testing.T) {
+	handler := NewRQuoteHandler(nil, nil, nil)
+
+	assert.Equal(t, "/rquote", handler.Command())
+}
+
+func TestRQuoteHandler_Description(t *testing.T) {
+	handler := NewRQuoteHandler(nil, nil, nil)
+
+	assert.Equal(t, "Get a random quote from this chat", handler.Description())
+}
+
+func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_NoQuotes() {
+	handler := NewRQuoteHandler(nil, s.DB, nil)
 
 	// Test that CountForChat returns 0 for empty chat
 	count, err := handler.store.CountForChat(context.Background(), -100123)
@@ -28,8 +46,8 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_NoQuotes() {
 	s.Assert().Equal(int64(0), count)
 }
 
-func (s *QuotesDBSuite) TestRQuoteHandler_Handle_OneQuote() {
-	handler := NewRQuoteHandler(nil, s.db.DB, nil)
+func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_OneQuote() {
+	handler := NewRQuoteHandler(nil, s.DB, nil)
 
 	// Create a quote
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -50,7 +68,7 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_OneQuote() {
 			{Order: 0, Message: datatypes.JSON(messageJSON)},
 		},
 	}
-	s.Require().NoError(s.db.DB.Create(&quote).Error)
+	s.Require().NoError(s.DB.Create(&quote).Error)
 
 	// Test that CountForChat returns 1
 	count, err := handler.store.CountForChat(context.Background(), -100123)
@@ -67,11 +85,11 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_OneQuote() {
 	rendered, err := handler.renderer.RenderWithDate(randomQuote)
 	s.Require().NoError(err)
 	s.Assert().Contains(rendered, "Author: This is a quote")
-	s.Assert().Contains(rendered, "#1")
+	s.Assert().Contains(rendered, fmt.Sprintf("#%d", randomQuote.ID))
 }
 
-func (s *QuotesDBSuite) TestRQuoteHandler_Handle_MultipleQuotes() {
-	handler := NewRQuoteHandler(nil, s.db.DB, nil)
+func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_MultipleQuotes() {
+	handler := NewRQuoteHandler(nil, s.DB, nil)
 
 	// Create multiple quotes
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -93,7 +111,7 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_MultipleQuotes() {
 				{Order: 0, Message: datatypes.JSON(messageJSON)},
 			},
 		}
-		s.Require().NoError(s.db.DB.Create(&quote).Error)
+		s.Require().NoError(s.DB.Create(&quote).Error)
 	}
 
 	// Test that CountForChat returns 3
@@ -108,8 +126,8 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_MultipleQuotes() {
 	s.Assert().True(randomQuote.ID > 0)
 }
 
-func (s *QuotesDBSuite) TestRQuoteHandler_Handle_DifferentChat() {
-	handler := NewRQuoteHandler(nil, s.db.DB, nil)
+func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_DifferentChat() {
+	handler := NewRQuoteHandler(nil, s.DB, nil)
 
 	// Create quote in different chat
 	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
@@ -130,7 +148,7 @@ func (s *QuotesDBSuite) TestRQuoteHandler_Handle_DifferentChat() {
 			{Order: 0, Message: datatypes.JSON(messageJSON)},
 		},
 	}
-	s.Require().NoError(s.db.DB.Create(&quote).Error)
+	s.Require().NoError(s.DB.Create(&quote).Error)
 
 	// Test that CountForChat returns 0 for different chat
 	count, err := handler.store.CountForChat(context.Background(), -100123)

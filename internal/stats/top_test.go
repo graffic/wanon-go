@@ -76,12 +76,12 @@ func TestExtractTopLimit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := extractTopLimit(tt.text, tt.defaultLimit, tt.maxLimit)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
+				if err == "" {
+					t.Fatal("expected error, got nothing")
 				}
 				return
 			}
-			if err != nil {
+			if err != "" {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if got != tt.wantLimit {

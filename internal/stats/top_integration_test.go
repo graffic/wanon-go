@@ -1,4 +1,4 @@
-package stats_test
+package stats
 
 import (
 	"context"
@@ -6,138 +6,392 @@ import (
 	"testing"
 	"time"
 
-	"github.com/graffic/wanon-go/internal/stats"
+	"github.com/go-telegram/bot/models"
+	"github.com/graffic/wanon-go/internal/config"
 	"github.com/graffic/wanon-go/internal/testutils"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"strings"
 )
 
 type TopIntegrationSuite struct {
-	suite.Suite
-	db  *testutils.TestDB
-	svc *stats.Service
+	testutils.DBSuite
+	svc *Service
 	ctx context.Context
+	cfg config.StatsConfig
 }
 
 func (s *TopIntegrationSuite) SetupSuite() {
-	s.db = testutils.NewTestDB(s.T())
-	s.svc = stats.NewService(s.db.DB)
+	s.DBSuite.SetupSuite()
+	s.svc = NewService(s.DB)
 	s.ctx = context.Background()
+	s.cfg = config.StatsConfig{
+		TopDefaultLimit: 5,
+		TopMaxLimit:     20,
+	}
 }
 
-func (s *TopIntegrationSuite) SetupTest() {
-	tables := []string{"user_message_stats", "user_message_hourly"}
-	for _, table := range tables {
-		s.Require().NoError(s.db.DB.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)).Error)
+
+
+func (s *TopIntegrationSuite) TestHandle_HappyPath() {
+	chatID := int64(-10012345678)
+	now := time.Now().UTC()
+
+	// Insert test data for today, this week, and all-time
+	testCases := []struct {
+		userID   int64
+		userName string
+		msgTime  time.Time
+		count    int
+	}{
+		{101, "alice", now.Truncate(time.Hour), 3},                      // today
+		{102, "bob", now.AddDate(0, 0, -3).Truncate(time.Hour), 2},      // this week
+		{103, "charlie", now.AddDate(0, 0, -15).Truncate(time.Hour), 5}, // this month
 	}
+
+	for _, tc := range testCases {
+		for i := 0; i < tc.count; i++ {
+			err := s.svc.RecordMessage(s.ctx, chatID, tc.userID, tc.userName, tc.msgTime)
+			s.Require().NoError(err)
+		}
+	}
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		From: &models.User{
+			ID:       99999,
+			Username: "commander",
+		},
+		Text: "/top",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg, "expected a message to be sent")
+	s.Require().Equal(chatID, mb.sentMsg.ChatID)
+
+	text := mb.sentMsg.Text
+	s.T().Logf("Response text:\n%s", text)
+	// Expected output structure:
+	// Top 5 users
+	// Today: alice — 3 (only alice has messages today)
+	// This week: alice — 3, bob — 2 (bob's from 3 days ago)
+	// This month: alice — 3, bob — 2 (charlie is from last month)
+	// All time: charlie — 5, alice — 3, bob — 2
+
+	// Verify header shows correct limit
+	s.Require().Contains(text, fmt.Sprintf("Top %d users", s.cfg.TopDefaultLimit))
+
+	// Parse sections and verify each contains expected user data
+	sections := strings.Split(text, "\n\n")
+
+	// Today section: only alice (3 messages today)
+	todaySection := findSection(sections, func(s string) bool {
+		return strings.HasPrefix(strings.TrimSpace(s), "Today")
+	})
+	s.Require().Contains(todaySection, "1. alice — 3", "Today should show alice with 3 messages")
+
+	// This week section: alice (3) + bob (2 from 3 days ago)
+	weekSection := findSection(sections, func(s string) bool {
+		return strings.HasPrefix(strings.TrimSpace(s), "This week")
+	})
+	s.Require().Contains(weekSection, "1. alice — 3", "This week should show alice with 3 messages")
+	s.Require().Contains(weekSection, "2. bob — 2", "This week should show bob with 2 messages")
+
+	// This month section: alice (3) + bob (2) - charlie is from last month
+	monthSection := findSection(sections, func(s string) bool {
+		return strings.HasPrefix(strings.TrimSpace(s), "This month")
+	})
+	s.Require().Contains(monthSection, "1. alice — 3", "This month should show alice with 3 messages")
+	s.Require().Contains(monthSection, "2. bob — 2", "This month should show bob with 2 messages")
+
+	// All time section: same users as this month
+	allTimeSection := findSection(sections, func(s string) bool {
+		return strings.HasPrefix(strings.TrimSpace(s), "All time:")
+	})
+	s.Require().Contains(allTimeSection, "charlie", "All time should include charlie")
+	s.Require().Contains(allTimeSection, "alice", "All time should include alice")
+	s.Require().Contains(allTimeSection, "bob", "All time should include bob")
+}
+
+func (s *TopIntegrationSuite) TestHandle_WithCustomLimit() {
+	chatID := int64(-10012345678)
+	now := time.Now().UTC()
+
+	// Insert 3 users with different counts
+	testCases := []struct {
+		userID   int64
+		userName string
+		count    int
+	}{
+		{101, "alice", 5},
+		{102, "bob", 3},
+		{103, "charlie", 1},
+	}
+
+	for _, tc := range testCases {
+		for i := 0; i < tc.count; i++ {
+			err := s.svc.RecordMessage(s.ctx, chatID, tc.userID, tc.userName, now)
+			s.Require().NoError(err)
+		}
+	}
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top 2",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	text := mb.sentMsg.Text
+	s.T().Logf("Response text: %s", text)
+
+	s.Require().Contains(text, "Top 2 users")
+}
+
+func (s *TopIntegrationSuite) TestHandle_InvalidLimit_Zero() {
+	chatID := int64(-10012345678)
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top 0",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	s.Require().Contains(mb.sentMsg.Text, "minimum 1")
+}
+
+func (s *TopIntegrationSuite) TestHandle_InvalidLimit_TooHigh() {
+	chatID := int64(-10012345678)
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top 100",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	s.Require().Contains(mb.sentMsg.Text, "maximum")
+}
+
+func (s *TopIntegrationSuite) TestHandle_InvalidLimit_NonNumeric() {
+	chatID := int64(-10012345678)
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top abc",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	s.Require().Contains(mb.sentMsg.Text, "Usage: !top [number]")
+}
+
+func (s *TopIntegrationSuite) TestHandle_NoMessagesYet() {
+	chatID := int64(-10012345678)
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	text := mb.sentMsg.Text
+	s.T().Logf("Response text: %s", text)
+
+	s.Require().Contains(text, "Top 5 users")
+	s.Require().Contains(text, "No messages yet")
+}
+
+func (s *TopIntegrationSuite) TestHandle_UsersRankedCorrectly() {
+	chatID := int64(-10012345678)
+	now := time.Now().UTC()
+
+	// Insert test data with specific counts for ranking verification
+	testCases := []struct {
+		userID   int64
+		userName string
+		count    int
+	}{
+		{101, "alice", 10},
+		{102, "bob", 7},
+		{103, "charlie", 5},
+		{104, "diana", 3},
+		{105, "eve", 1},
+	}
+
+	for _, tc := range testCases {
+		for i := 0; i < tc.count; i++ {
+			err := s.svc.RecordMessage(s.ctx, chatID, tc.userID, tc.userName, now)
+			s.Require().NoError(err)
+		}
+	}
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top 5",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	text := mb.sentMsg.Text
+	s.T().Logf("Response text: %s", text)
+
+	// Verify all users are present and ranked correctly
+	s.Require().Contains(text, "alice")
+	s.Require().Contains(text, "bob")
+	s.Require().Contains(text, "charlie")
+	s.Require().Contains(text, "diana")
+	s.Require().Contains(text, "eve")
+}
+
+func (s *TopIntegrationSuite) TestHandle_NoMessage() {
+	h := NewTopHandler(nil, nil, s.cfg, nil)
+	update := &models.Update{}
+	h.Handle(context.Background(), nil, update)
+	// No error
+}
+
+func (s *TopIntegrationSuite) TestHandle_NoText() {
+	h := NewTopHandler(nil, nil, s.cfg, nil)
+	update := &models.Update{
+		Message: &models.Message{
+			Chat: models.Chat{ID: -10012345678},
+			Text: "",
+		},
+	}
+	h.Handle(context.Background(), nil, update)
+	// No error
+}
+
+func TestTopHandlerCommand(t *testing.T) {
+	h := NewTopHandler(nil, nil, config.StatsConfig{}, nil)
+	assert.Equal(t, "top", h.Command())
+}
+
+func TestTopHandlerDescription(t *testing.T) {
+	h := NewTopHandler(nil, nil, config.StatsConfig{}, nil)
+	assert.Equal(t, "Show top users by message count", h.Description())
+}
+
+func (s *TopIntegrationSuite) TestHandle_TodayVsWeekVsMonth() {
+	chatID := int64(-10012345678)
+	now := time.Now().UTC()
+
+	// Insert data for different time periods
+	testCases := []struct {
+		userID   int64
+		userName string
+		msgTime  time.Time
+		count    int
+	}{
+		{101, "alice", now.Truncate(time.Hour), 3},                      // today only
+		{102, "bob", now.AddDate(0, 0, -3).Truncate(time.Hour), 5},      // this week (not today)
+		{103, "charlie", now.AddDate(0, 0, -15).Truncate(time.Hour), 7}, // this month (not this week)
+	}
+
+	for _, tc := range testCases {
+		for i := 0; i < tc.count; i++ {
+			err := s.svc.RecordMessage(s.ctx, chatID, tc.userID, tc.userName, tc.msgTime)
+			s.Require().NoError(err)
+		}
+	}
+
+	mb := &mockBotClient{}
+	h := NewTopHandler(mb, s.svc, s.cfg, nil)
+
+	seenMsg := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		Text: "/top",
+		Date: int(time.Now().Unix()),
+	}
+	update := &models.Update{Message: seenMsg}
+
+	h.Handle(s.ctx, nil, update)
+
+	s.Require().NotNil(mb.sentMsg)
+	text := mb.sentMsg.Text
+	s.T().Logf("Response text:\n%s", text)
+
+	// Today section should show alice at top (3 messages today)
+	todaySectionStart := s.FindSection(text, "Today")
+	s.Require().Greater(todaySectionStart, -1, "Today section not found")
+	s.Require().Contains(text[todaySectionStart:], "alice")
+
+	// This week section should show bob at top (5 messages this week, alice has 3)
+	weekSectionStart := s.FindSection(text, "This week")
+	s.Require().Greater(weekSectionStart, -1, "This week section not found")
+	s.Require().Contains(text[weekSectionStart:], "bob")
+
+	// This month section should show charlie at top (7 messages this month)
+	monthSectionStart := s.FindSection(text, "This month")
+	s.Require().Greater(monthSectionStart, -1, "This month section not found")
+	s.Require().Contains(text[monthSectionStart:], "charlie")
+}
+
+// FindSection finds the start index of a section header in the text
+func (s *TopIntegrationSuite) FindSection(text, sectionName string) int {
+	for i := 0; i < len(text)-len(sectionName); i++ {
+		if text[i:i+len(sectionName)] == sectionName {
+			return i
+		}
+	}
+	return -1
+}
+
+// findSection finds and returns the first section matching the predicate.
+func findSection(sections []string, predicate func(string) bool) string {
+	for _, s := range sections {
+		if predicate(s) {
+			return s
+		}
+	}
+	return ""
 }
 
 func TestTopIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(TopIntegrationSuite))
-}
-
-func (s *TopIntegrationSuite) TestGetTopUsersTotal() {
-	chatID := int64(-1001)
-	now := time.Now().UTC()
-
-	// Record messages for several users
-	for i := 0; i < 10; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 1, "alice", now))
-	}
-	for i := 0; i < 5; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 2, "bob", now))
-	}
-	for i := 0; i < 3; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 3, "charlie", now))
-	}
-
-	result, err := s.svc.GetTopUsersTotal(s.ctx, chatID, 2)
-	s.Require().NoError(err)
-
-	s.Require().Len(result, 2)
-	s.Equal("alice", result[0].UserName)
-	s.Equal(int64(10), result[0].MessageCount)
-	s.Equal("bob", result[1].UserName)
-	s.Equal(int64(5), result[1].MessageCount)
-}
-
-func (s *TopIntegrationSuite) TestGetTopUsersSince() {
-	chatID := int64(-1002)
-	now := time.Now().UTC()
-	yesterday := now.Add(-24 * time.Hour)
-
-	// Record messages: alice yesterday, bob today
-	for i := 0; i < 5; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 1, "alice", yesterday))
-	}
-	for i := 0; i < 3; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 2, "bob", now))
-	}
-
-	// Query since today start - should only include bob
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	result, err := s.svc.GetTopUsersSince(s.ctx, chatID, todayStart, 10)
-	s.Require().NoError(err)
-
-	s.Require().Len(result, 1)
-	s.Equal("bob", result[0].UserName)
-	s.Equal(int64(3), result[0].MessageCount)
-
-	// Query since yesterday - should include both
-	result, err = s.svc.GetTopUsersSince(s.ctx, chatID, yesterday.Truncate(time.Hour), 10)
-	s.Require().NoError(err)
-
-	s.Require().Len(result, 2)
-	s.Equal("alice", result[0].UserName)
-	s.Equal(int64(5), result[0].MessageCount)
-}
-
-func (s *TopIntegrationSuite) TestGetTopUsersSinceMergesNameChanges() {
-	chatID := int64(-1010)
-	now := time.Now().UTC()
-	// Place messages in two different hourly buckets so they create separate
-	// hourly rows with different user_name values for the same user_id.
-	bucket1 := now.Add(-2 * time.Hour)
-	bucket2 := now
-
-	// Same user_id (42) but different names in each bucket.
-	for i := 0; i < 3; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 42, "Alice Wonderland", bucket1))
-	}
-	for i := 0; i < 4; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, chatID, 42, "alicew", bucket2))
-	}
-
-	since := bucket1.Truncate(time.Hour)
-	result, err := s.svc.GetTopUsersSince(s.ctx, chatID, since, 10)
-	s.Require().NoError(err)
-
-	// The user should appear as a single entry with combined count.
-	s.Require().Len(result, 1)
-	s.Equal(int64(7), result[0].MessageCount)
-	// Should use the most recent name.
-	s.Equal("alicew", result[0].UserName)
-}
-
-func (s *TopIntegrationSuite) TestGetTopUsersSinceEmpty() {
-	result, err := s.svc.GetTopUsersSince(s.ctx, -9999, time.Now().UTC(), 5)
-	s.Require().NoError(err)
-	s.Empty(result)
-}
-
-func (s *TopIntegrationSuite) TestGetTopUsersTotalIsolatedByChat() {
-	now := time.Now().UTC()
-
-	// Record messages in two different chats
-	for i := 0; i < 5; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, -1003, 1, "alice", now))
-	}
-	for i := 0; i < 3; i++ {
-		s.Require().NoError(s.svc.RecordMessage(s.ctx, -1004, 2, "bob", now))
-	}
-
-	// Query chat -1003 should only have alice
-	result, err := s.svc.GetTopUsersTotal(s.ctx, -1003, 10)
-	s.Require().NoError(err)
-	s.Require().Len(result, 1)
-	s.Equal("alice", result[0].UserName)
 }

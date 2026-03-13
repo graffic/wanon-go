@@ -4,11 +4,29 @@ import (
 	"context"
 	"encoding/json"
 
+	"testing"
+
+	"github.com/graffic/wanon-go/internal/testutils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"gorm.io/datatypes"
 )
 
-func (s *QuotesDBSuite) TestBuilder_BuildFrom_NoCacheEntries() {
-	builder := NewBuilder(s.db.DB)
+type BuilderDBSuite struct {
+	testutils.DBSuite
+}
+
+func (s *BuilderDBSuite) SetupSuite() {
+	s.DBSuite.SetupSuite()
+}
+
+func TestBuilderDBSuite(t *testing.T) {
+	suite.Run(t, new(BuilderDBSuite))
+}
+
+func (s *BuilderDBSuite) TestBuilder_BuildFrom_NoCacheEntries() {
+	builder := NewBuilder(s.DB)
 
 	// Try to build from a message that doesn't exist in cache
 	result, err := builder.BuildFrom(context.Background(), -100123, 999)
@@ -19,7 +37,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_NoCacheEntries() {
 	s.Assert().Contains(err.Error(), "no cache entries found")
 }
 
-func (s *QuotesDBSuite) TestBuilder_BuildFrom_OneCacheEntry() {
+func (s *BuilderDBSuite) TestBuilder_BuildFrom_OneCacheEntry() {
 	// Add a message to cache
 	cachedMsg := map[string]interface{}{
 		"message_id": float64(5),
@@ -35,9 +53,9 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_OneCacheEntry() {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msgJSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry).Error)
 
-	builder := NewBuilder(s.db.DB)
+	builder := NewBuilder(s.DB)
 	result, err := builder.BuildFrom(context.Background(), -100123, 5)
 	s.Require().NoError(err)
 	s.Assert().NotNil(result)
@@ -50,7 +68,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_OneCacheEntry() {
 	s.Assert().Equal("Cached message", msgData.Text)
 }
 
-func (s *QuotesDBSuite) TestBuilder_BuildFrom_MultipleEntries() {
+func (s *BuilderDBSuite) TestBuilder_BuildFrom_MultipleEntries() {
 	// Create a chain: msg1 -> msg2 -> msg3
 	msg1 := map[string]interface{}{
 		"message_id": float64(1),
@@ -82,7 +100,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_MultipleEntries() {
 		Date:      1609459000,
 		Message:   datatypes.JSON(msg1JSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry1).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry1).Error)
 
 	// msg3 replies to msg2
 	msg2JSON, _ := json.Marshal(msg2)
@@ -94,7 +112,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_MultipleEntries() {
 		Date:      1609459050,
 		Message:   datatypes.JSON(msg2JSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry2).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry2).Error)
 
 	msg3JSON, _ := json.Marshal(msg3)
 	replyID3 := int64(2)
@@ -105,9 +123,9 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_MultipleEntries() {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msg3JSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry3).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry3).Error)
 
-	builder := NewBuilder(s.db.DB)
+	builder := NewBuilder(s.DB)
 	result, err := builder.BuildFrom(context.Background(), -100123, 3)
 	s.Require().NoError(err)
 	s.Assert().NotNil(result)
@@ -124,7 +142,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_MultipleEntries() {
 	s.Assert().Equal([]string{"First", "Second", "Third"}, texts)
 }
 
-func (s *QuotesDBSuite) TestBuilder_BuildFrom_PartialCache() {
+func (s *BuilderDBSuite) TestBuilder_BuildFrom_PartialCache() {
 	// Only cache msg2, not msg1
 	msg2 := map[string]interface{}{
 		"message_id": float64(2),
@@ -142,9 +160,9 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_PartialCache() {
 		Date:      1609459050,
 		Message:   datatypes.JSON(msg2JSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry2).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry2).Error)
 
-	builder := NewBuilder(s.db.DB)
+	builder := NewBuilder(s.DB)
 	result, err := builder.BuildFrom(context.Background(), -100123, 2)
 	s.Require().NoError(err)
 	s.Assert().NotNil(result)
@@ -157,7 +175,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_PartialCache() {
 	s.Assert().Equal("Second", msgData.Text)
 }
 
-func (s *QuotesDBSuite) TestBuilder_BuildFrom_DifferentChat() {
+func (s *BuilderDBSuite) TestBuilder_BuildFrom_DifferentChat() {
 	// Cache entry in different chat
 	cachedMsg := map[string]interface{}{
 		"message_id": float64(5),
@@ -172,9 +190,9 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_DifferentChat() {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msgJSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry).Error)
 
-	builder := NewBuilder(s.db.DB)
+	builder := NewBuilder(s.DB)
 	// Try to build from different chat
 	result, err := builder.BuildFrom(context.Background(), -100123, 5)
 
@@ -184,7 +202,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFrom_DifferentChat() {
 	s.Assert().Contains(err.Error(), "no cache entries found")
 }
 
-func (s *QuotesDBSuite) TestBuilder_BuildFromMessage_UsesCache() {
+func (s *BuilderDBSuite) TestBuilder_BuildFromMessage_UsesCache() {
 	// Add a message to cache
 	cachedMsg := map[string]interface{}{
 		"message_id": float64(5),
@@ -200,9 +218,9 @@ func (s *QuotesDBSuite) TestBuilder_BuildFromMessage_UsesCache() {
 		Date:      1609459100,
 		Message:   datatypes.JSON(msgJSON),
 	}
-	s.Require().NoError(s.db.DB.Create(&cacheEntry).Error)
+	s.Require().NoError(s.DB.Create(&cacheEntry).Error)
 
-	builder := NewBuilder(s.db.DB)
+	builder := NewBuilder(s.DB)
 	replyToID := int64(5)
 	result, err := builder.BuildFromMessage(context.Background(), -100123, 10, &replyToID)
 	s.Require().NoError(err)
@@ -210,8 +228,8 @@ func (s *QuotesDBSuite) TestBuilder_BuildFromMessage_UsesCache() {
 	s.Assert().Len(result.Entries, 1)
 }
 
-func (s *QuotesDBSuite) TestBuilder_BuildFromMessage_NotInCache() {
-	builder := NewBuilder(s.db.DB)
+func (s *BuilderDBSuite) TestBuilder_BuildFromMessage_NotInCache() {
+	builder := NewBuilder(s.DB)
 	// Message not in cache, no reply to follow
 	result, err := builder.BuildFromMessage(context.Background(), -100123, 10, nil)
 
@@ -220,7 +238,7 @@ func (s *QuotesDBSuite) TestBuilder_BuildFromMessage_NotInCache() {
 	s.Assert().Contains(err.Error(), "no cache entries found")
 }
 
-func (s *QuotesDBSuite) TestExtractMessageData() {
+func TestExtractMessageData(t *testing.T) {
 	msg := map[string]interface{}{
 		"message_id": float64(1),
 		"from":       map[string]interface{}{"first_name": "Test"},
@@ -234,8 +252,8 @@ func (s *QuotesDBSuite) TestExtractMessageData() {
 	}
 
 	data, err := ExtractMessageData(entry)
-	s.Require().NoError(err)
-	s.Assert().Equal(int64(1), data.MessageID)
-	s.Assert().Equal("Hello", data.Text)
-	s.Assert().Equal(int64(1609459100), data.Date)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), data.MessageID)
+	assert.Equal(t, "Hello", data.Text)
+	assert.Equal(t, int64(1609459100), data.Date)
 }

@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/go-telegram/bot/models"
@@ -10,17 +9,15 @@ import (
 
 // Middleware provides cache integration for the dispatcher
 type Middleware struct {
-	addCommand  *AddCommand
-	editCommand *EditCommand
-	logger      *slog.Logger
+	service *Service
+	logger  *slog.Logger
 }
 
 // NewMiddleware creates a new cache middleware
 func NewMiddleware(service *Service, logger *slog.Logger) *Middleware {
 	return &Middleware{
-		addCommand:  NewAddCommand(service, logger),
-		editCommand: NewEditCommand(service, logger),
-		logger:      logger,
+		service: service,
+		logger:  logger,
 	}
 }
 
@@ -40,85 +37,58 @@ func (m *Middleware) HandleUpdate(ctx context.Context, update *models.Update) er
 	return nil
 }
 
-// handleMessage processes a regular message and adds it to cache
-func (m *Middleware) handleMessage(ctx context.Context, msg *models.Message) error {
-	// Convert to JSON for the AddCommand
-	msgData := map[string]interface{}{
-		"message_id": msg.ID,
-		"chat": map[string]interface{}{
-			"id":   msg.Chat.ID,
-			"type": msg.Chat.Type,
+func mapMessage(msg *models.Message) *Message {
+	res := &Message{
+		MessageID: int64(msg.ID),
+		Chat: Chat{
+			ID:   msg.Chat.ID,
+			Type: string(msg.Chat.Type),
 		},
-		"date": msg.Date,
-	}
-
-	if msg.Text != "" {
-		msgData["text"] = msg.Text
+		Date: int64(msg.Date),
+		Text: msg.Text,
 	}
 
 	if msg.From != nil {
-		msgData["from"] = map[string]interface{}{
-			"id":         msg.From.ID,
-			"first_name": msg.From.FirstName,
-		}
-		if msg.From.LastName != "" {
-			msgData["from"].(map[string]interface{})["last_name"] = msg.From.LastName
-		}
-		if msg.From.Username != "" {
-			msgData["from"].(map[string]interface{})["username"] = msg.From.Username
+		res.From = &User{
+			ID:        msg.From.ID,
+			FirstName: msg.From.FirstName,
+			LastName:  msg.From.LastName,
+			Username:  msg.From.Username,
 		}
 	}
 
 	if msg.ReplyToMessage != nil {
-		msgData["reply_to_message"] = map[string]interface{}{
-			"message_id": msg.ReplyToMessage.ID,
+		res.ReplyTo = &Message{
+			MessageID: int64(msg.ReplyToMessage.ID),
 		}
 	}
 
-	rawJSON, err := json.Marshal(msgData)
-	if err != nil {
-		m.logger.Error("failed to marshal message for cache", "error", err)
-		return err
-	}
+	return res
+}
 
-	return m.addCommand.Execute(ctx, rawJSON)
+// handleMessage processes a regular message and adds it to cache
+func (m *Middleware) handleMessage(ctx context.Context, msg *models.Message) error {
+	mappedMsg := mapMessage(msg)
+
+	m.logger.Debug("adding message to cache",
+		"chat_id", mappedMsg.Chat.ID,
+		"message_id", mappedMsg.MessageID,
+		"date", mappedMsg.Date,
+	)
+
+	return m.service.Add(ctx, mappedMsg)
 }
 
 // handleEditedMessage processes an edited message and updates the cache
 func (m *Middleware) handleEditedMessage(ctx context.Context, msg *models.Message) error {
-	// Convert to JSON for the EditCommand
-	msgData := map[string]interface{}{
-		"message_id": msg.ID,
-		"chat": map[string]interface{}{
-			"id":   msg.Chat.ID,
-			"type": msg.Chat.Type,
-		},
-		"date":      msg.Date,
-		"edit_date": msg.EditDate,
-	}
+	mappedMsg := mapMessage(msg)
 
-	if msg.Text != "" {
-		msgData["text"] = msg.Text
-	}
+	m.logger.Debug("processing edited message",
+		"chat_id", mappedMsg.Chat.ID,
+		"message_id", mappedMsg.MessageID,
+		"date", mappedMsg.Date,
+	)
 
-	if msg.From != nil {
-		msgData["from"] = map[string]interface{}{
-			"id":         msg.From.ID,
-			"first_name": msg.From.FirstName,
-		}
-		if msg.From.LastName != "" {
-			msgData["from"].(map[string]interface{})["last_name"] = msg.From.LastName
-		}
-		if msg.From.Username != "" {
-			msgData["from"].(map[string]interface{})["username"] = msg.From.Username
-		}
-	}
-
-	rawJSON, err := json.Marshal(msgData)
-	if err != nil {
-		m.logger.Error("failed to marshal edited message for cache", "error", err)
-		return err
-	}
-
-	return m.editCommand.Execute(ctx, rawJSON)
+	return m.service.Edit(ctx, mappedMsg)
 }
+

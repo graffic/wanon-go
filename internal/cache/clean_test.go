@@ -6,11 +6,26 @@ import (
 	"os"
 	"time"
 
+	"github.com/graffic/wanon-go/internal/testutils"
 	"gorm.io/datatypes"
 )
 
-func (s *CacheDBSuite) TestClean_DeletesOldCacheEntries() {
-	db := s.db
+type CleanIntegrationSuite struct {
+	testutils.DBSuite
+	service    *Service
+	middleware *Middleware
+	ctx        context.Context
+}
+
+func (s *CleanIntegrationSuite) SetupSuite() {
+	s.DBSuite.SetupSuite()
+	s.service = NewService(s.DB)
+	s.middleware = NewMiddleware(s.service, slog.Default())
+	s.ctx = context.Background()
+}
+
+func (s *CleanIntegrationSuite) TestClean_DeletesOldCacheEntries() {
+	db := s.DB
 
 	// Create old cache entries
 	oldTime := time.Now().Add(-72 * time.Hour).Unix()
@@ -19,7 +34,7 @@ func (s *CacheDBSuite) TestClean_DeletesOldCacheEntries() {
 		{ChatID: 1, MessageID: 2, Date: oldTime, Message: datatypes.JSON(`{"text":"old2"}`)},
 	}
 	for _, entry := range oldEntries {
-		s.Require().NoError(db.DB.Create(&entry).Error)
+		s.Require().NoError(db.Create(&entry).Error)
 	}
 
 	// Create recent cache entries
@@ -29,7 +44,7 @@ func (s *CacheDBSuite) TestClean_DeletesOldCacheEntries() {
 		{ChatID: 1, MessageID: 4, Date: recentTime, Message: datatypes.JSON(`{"text":"recent2"}`)},
 	}
 	for _, entry := range recentEntries {
-		s.Require().NoError(db.DB.Create(&entry).Error)
+		s.Require().NoError(db.Create(&entry).Error)
 	}
 
 	// Run clean with 48 hour retention
@@ -38,28 +53,28 @@ func (s *CacheDBSuite) TestClean_DeletesOldCacheEntries() {
 		CleanInterval: time.Hour,
 		KeepDuration:  48 * time.Hour,
 	}
-	cleaner := NewCleaner(NewService(db.DB), config, logger)
+	cleaner := NewCleaner(NewService(db), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
 	s.Require().NoError(err)
 
 	// Verify old entries are deleted
 	var count int64
-	db.DB.Model(&CacheEntry{}).Where("date <= ?", oldTime).Count(&count)
+	db.Model(&CacheEntry{}).Where("date <= ?", oldTime).Count(&count)
 	s.Assert().Equal(int64(0), count)
 
 	// Verify recent entries remain
-	db.DB.Model(&CacheEntry{}).Count(&count)
+	db.Model(&CacheEntry{}).Count(&count)
 	s.Assert().Equal(int64(2), count)
 }
 
-func (s *CacheDBSuite) TestClean_NoEntriesToDelete() {
-	db := s.db
+func (s *CacheIntegrationSuite) TestClean_NoEntriesToDelete() {
+	db := s.DB
 
 	// Create only recent entries
 	recentTime := time.Now().Add(-1 * time.Hour).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: recentTime, Message: datatypes.JSON(`{"text":"recent"}`)}
-	s.Require().NoError(db.DB.Create(&entry).Error)
+	s.Require().NoError(db.Create(&entry).Error)
 
 	// Run clean with 48 hour retention
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -67,39 +82,39 @@ func (s *CacheDBSuite) TestClean_NoEntriesToDelete() {
 		CleanInterval: time.Hour,
 		KeepDuration:  48 * time.Hour,
 	}
-	cleaner := NewCleaner(NewService(db.DB), config, logger)
+	cleaner := NewCleaner(NewService(db), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
 	s.Require().NoError(err)
 
 	// Verify entry still exists
 	var count int64
-	db.DB.Model(&CacheEntry{}).Count(&count)
+	db.Model(&CacheEntry{}).Count(&count)
 	s.Assert().Equal(int64(1), count)
 }
 
-func (s *CacheDBSuite) TestClean_EmptyCache() {
-	db := s.db
+func (s *CacheIntegrationSuite) TestClean_EmptyCache() {
+	db := s.DB
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	config := Config{
 		CleanInterval: time.Hour,
 		KeepDuration:  48 * time.Hour,
 	}
-	cleaner := NewCleaner(NewService(db.DB), config, logger)
+	cleaner := NewCleaner(NewService(db), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
 	s.Require().NoError(err)
 }
 
-func (s *CacheDBSuite) TestClean_CorrectRetentionCalculation() {
-	db := s.db
+func (s *CleanIntegrationSuite) TestClean_CorrectRetentionCalculation() {
+	db := s.DB
 
 	// Create entry just past the threshold (48 hours + 1 second ago)
 	// Using strictly less than, so entry must be older than 48 hours to be deleted
 	thresholdTime := time.Now().Add(-48*time.Hour - time.Second).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: thresholdTime, Message: datatypes.JSON(`{"text":"threshold"}`)}
-	s.Require().NoError(db.DB.Create(&entry).Error)
+	s.Require().NoError(db.Create(&entry).Error)
 
 	// Run clean with 48 hour retention
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -107,23 +122,23 @@ func (s *CacheDBSuite) TestClean_CorrectRetentionCalculation() {
 		CleanInterval: time.Hour,
 		KeepDuration:  48 * time.Hour,
 	}
-	cleaner := NewCleaner(NewService(db.DB), config, logger)
+	cleaner := NewCleaner(NewService(db), config, logger)
 	err := cleaner.CleanOnce(context.Background())
 
 	s.Require().NoError(err)
 	// Entry older than 48 hours should be deleted
 	var count int64
-	db.DB.Model(&CacheEntry{}).Count(&count)
+	db.Model(&CacheEntry{}).Count(&count)
 	s.Assert().Equal(int64(0), count)
 }
 
-func (s *CacheDBSuite) TestCleaner_StartStop() {
-	db := s.db
+func (s *CleanIntegrationSuite) TestCleaner_StartStop() {
+	db := s.DB
 
 	// Create old entries
 	oldTime := time.Now().Add(-72 * time.Hour).Unix()
 	entry := CacheEntry{ChatID: 1, MessageID: 1, Date: oldTime, Message: datatypes.JSON(`{"text":"old"}`)}
-	s.Require().NoError(db.DB.Create(&entry).Error)
+	s.Require().NoError(db.Create(&entry).Error)
 
 	// Create cleaner with short interval for testing
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -131,7 +146,7 @@ func (s *CacheDBSuite) TestCleaner_StartStop() {
 		CleanInterval: 100 * time.Millisecond,
 		KeepDuration:  48 * time.Hour,
 	}
-	cleaner := NewCleaner(NewService(db.DB), config, logger)
+	cleaner := NewCleaner(NewService(db), config, logger)
 
 	// Start cleaner
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -158,6 +173,6 @@ func (s *CacheDBSuite) TestCleaner_StartStop() {
 
 	// Verify old entries were cleaned
 	var count int64
-	db.DB.Model(&CacheEntry{}).Count(&count)
+	db.Model(&CacheEntry{}).Count(&count)
 	s.Assert().Equal(int64(0), count)
 }

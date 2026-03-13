@@ -5,11 +5,27 @@ import (
 	"encoding/json"
 	"time"
 
+	"testing"
+
+	"github.com/graffic/wanon-go/internal/testutils"
+	"github.com/stretchr/testify/suite"
 	"gorm.io/datatypes"
 )
 
-func (s *QuotesDBSuite) TestStore_StoresQuoteWithEntries() {
-	store := NewStore(s.db.DB)
+type StoreDBSuite struct {
+	testutils.DBSuite
+}
+
+func (s *StoreDBSuite) SetupSuite() {
+	s.DBSuite.SetupSuite()
+}
+
+func TestStoreDBSuite(t *testing.T) {
+	suite.Run(t, new(StoreDBSuite))
+}
+
+func (s *StoreDBSuite) TestStore_StoresQuoteWithEntries() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{
 		"id":         123,
@@ -43,7 +59,7 @@ func (s *QuotesDBSuite) TestStore_StoresQuoteWithEntries() {
 
 	// Verify entries were stored
 	var storedEntries []QuoteEntry
-	err = s.db.DB.Where("quote_id = ?", quote.ID).Order("\"order\"").Find(&storedEntries).Error
+	err = s.DB.Where("quote_id = ?", quote.ID).Order("\"order\"").Find(&storedEntries).Error
 	s.Require().NoError(err)
 	s.Assert().Len(storedEntries, 3)
 
@@ -53,8 +69,8 @@ func (s *QuotesDBSuite) TestStore_StoresQuoteWithEntries() {
 	}
 }
 
-func (s *QuotesDBSuite) TestStore_StoresSingleEntry() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_StoresSingleEntry() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 
@@ -70,14 +86,14 @@ func (s *QuotesDBSuite) TestStore_StoresSingleEntry() {
 	s.Require().NoError(err)
 
 	var storedEntries []QuoteEntry
-	err = s.db.DB.Where("quote_id = ?", quote.ID).Find(&storedEntries).Error
+	err = s.DB.Where("quote_id = ?", quote.ID).Find(&storedEntries).Error
 	s.Require().NoError(err)
 	s.Assert().Len(storedEntries, 1)
 	s.Assert().Equal(0, storedEntries[0].Order)
 }
 
-func (s *QuotesDBSuite) TestStore_EmptyEntries() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_EmptyEntries() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 
@@ -90,8 +106,8 @@ func (s *QuotesDBSuite) TestStore_EmptyEntries() {
 	s.Assert().Contains(err.Error(), "cannot store quote with no entries")
 }
 
-func (s *QuotesDBSuite) TestStore_MultipleQuotesInSameChat() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_MultipleQuotesInSameChat() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 
@@ -119,14 +135,14 @@ func (s *QuotesDBSuite) TestStore_MultipleQuotesInSameChat() {
 
 	// Verify both quotes exist
 	var quotes []Quote
-	err = s.db.DB.Where("chat_id = ?", -100123).Find(&quotes).Error
+	err = s.DB.Where("chat_id = ?", -100123).Find(&quotes).Error
 	s.Require().NoError(err)
 	s.Assert().Len(quotes, 2)
 	s.Assert().NotEqual(quote1.ID, quote2.ID)
 }
 
-func (s *QuotesDBSuite) TestStore_GetByID() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_GetByID() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -148,8 +164,8 @@ func (s *QuotesDBSuite) TestStore_GetByID() {
 	s.Assert().Len(retrieved.Entries, 1)
 }
 
-func (s *QuotesDBSuite) TestStore_GetRandomForChat() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_GetRandomForChat() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -170,8 +186,8 @@ func (s *QuotesDBSuite) TestStore_GetRandomForChat() {
 	s.Assert().Equal(int64(-100123), retrieved.ChatID)
 }
 
-func (s *QuotesDBSuite) TestStore_GetRandomForChat_NoQuotes() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_GetRandomForChat_NoQuotes() {
+	store := NewStore(s.DB)
 
 	// Get random quote from empty chat
 	retrieved, err := store.GetRandomForChat(context.Background(), -100123)
@@ -179,8 +195,8 @@ func (s *QuotesDBSuite) TestStore_GetRandomForChat_NoQuotes() {
 	s.Assert().Nil(retrieved)
 }
 
-func (s *QuotesDBSuite) TestStore_CountForChat() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_CountForChat() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -206,8 +222,8 @@ func (s *QuotesDBSuite) TestStore_CountForChat() {
 	s.Assert().Equal(int64(1), count)
 }
 
-func (s *QuotesDBSuite) TestStore_Delete() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_Delete() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{
@@ -227,13 +243,13 @@ func (s *QuotesDBSuite) TestStore_Delete() {
 
 	// Verify it's gone
 	var count int64
-	err = s.db.DB.Model(&Quote{}).Where("id = ?", quote.ID).Count(&count).Error
+	err = s.DB.Model(&Quote{}).Where("id = ?", quote.ID).Count(&count).Error
 	s.Require().NoError(err)
 	s.Assert().Equal(int64(0), count)
 }
 
-func (s *QuotesDBSuite) TestStore_StoreFromBuild() {
-	store := NewStore(s.db.DB)
+func (s *StoreDBSuite) TestStore_StoreFromBuild() {
+	store := NewStore(s.DB)
 
 	creator := map[string]interface{}{"id": 123, "first_name": "Test"}
 	entries := []CacheEntry{

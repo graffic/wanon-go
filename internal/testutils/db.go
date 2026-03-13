@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -99,7 +100,7 @@ func (tdb *TestDB) Cleanup() {
 	ctx := context.Background()
 
 	// Truncate tables
-	tables := []string{"quote_entry", "quote", "cache_entry"}
+	tables := []string{"quote_entry", "quote", "cache_entry", "user_message_stats", "user_message_hourly"}
 	for _, table := range tables {
 		tdb.DB.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table))
 	}
@@ -127,4 +128,25 @@ func (tdb *TestDB) Transaction(t *testing.T, fn func(tx *gorm.DB)) {
 	fn(tx)
 
 	tx.Rollback()
+}
+
+// DBSuite is a testify suite that provides a test database connection
+type DBSuite struct {
+	suite.Suite
+	DB *gorm.DB
+}
+
+// SetupSuite starts the test database container
+func (s *DBSuite) SetupSuite() {
+	testDB := NewTestDB(s.T())
+	s.DB = testDB.DB
+}
+
+// SetupTest truncates all tables before each test
+func (s *DBSuite) SetupTest() {
+	s.T().Log("Truncating tables")
+	tables := []string{"quote_entry", "quote", "cache_entry", "user_message_stats", "user_message_hourly"}
+	for _, table := range tables {
+		s.Require().NoError(s.DB.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)).Error)
+	}
 }
