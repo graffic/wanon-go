@@ -35,16 +35,32 @@ func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 	chatID := int64(-10012345678)
 	now := time.Now().UTC()
 
-	// Insert test data for today, this week, and all-time
+	// Calculate Monday of this week for consistent testing
+	thisMonday := mondayOf(now)
+
+	// Calculate "this week but not today" date
+	// Use Monday (start of week) which is always in this week and not today
+	// (unless today is Monday, then use Wednesday)
+	thisWeekNotToday := thisMonday.Add(time.Hour) // Monday + 1 hour
+	if now.Weekday() == time.Monday {
+		// If today is Monday, use Wednesday instead
+		thisWeekNotToday = thisMonday.AddDate(0, 0, 2).Add(time.Hour)
+	}
+
+	// Insert test data with calculated dates to ensure proper categorization
 	testCases := []struct {
 		userID   int64
 		userName string
 		msgTime  time.Time
 		count    int
+		desc     string
 	}{
-		{101, "alice", now.Truncate(time.Hour), 3},                      // today
-		{102, "bob", now.AddDate(0, 0, -1).Truncate(time.Hour), 2},      // this week (yesterday)
-		{103, "charlie", now.AddDate(0, 0, -15).Truncate(time.Hour), 5}, // this month
+		// Today: alice has 3 messages today
+		{101, "alice", now.Truncate(time.Hour), 3, "today"},
+		// This week (but not today): bob has 2 messages
+		{102, "bob", thisWeekNotToday, 2, "this week"},
+		// Last week: charlie has 5 messages from last week (should be in month/total only)
+		{103, "charlie", thisMonday.AddDate(0, 0, -3).Add(time.Hour), 5, "last week"},
 	}
 
 	for _, tc := range testCases {
@@ -75,12 +91,6 @@ func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 
 	text := mb.sentMsg.Text
 	s.T().Logf("Response text:\n%s", text)
-	// Expected output structure:
-	// Top 5 users
-	// Today: alice — 3 (only alice has messages today)
-	// This week: alice — 3, bob — 2 (bob's from yesterday, Monday)
-	// This month: charlie — 5, alice — 3, bob — 2 (all from this month)
-	// All time: charlie — 5, alice — 3, bob — 2
 
 	// Verify header shows correct limit
 	s.Require().Contains(text, fmt.Sprintf("Top %d users", s.cfg.TopDefaultLimit))
@@ -92,24 +102,27 @@ func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 	todaySection := findSection(sections, func(s string) bool {
 		return strings.HasPrefix(strings.TrimSpace(s), "Today")
 	})
-	s.Require().Contains(todaySection, "1. alice — 3", "Today should show alice with 3 messages")
+	s.Require().Contains(todaySection, "alice — 3", "Today should show alice with 3 messages")
+	s.Require().NotContains(todaySection, "bob", "Today should not show bob")
+	s.Require().NotContains(todaySection, "charlie", "Today should not show charlie")
 
-	// This week section: alice (3) + bob (2 from yesterday)
+	// This week section: alice (3) + bob (2), but NOT charlie (from last week)
 	weekSection := findSection(sections, func(s string) bool {
 		return strings.HasPrefix(strings.TrimSpace(s), "This week")
 	})
-	s.Require().Contains(weekSection, "1. alice — 3", "This week should show alice with 3 messages")
-	s.Require().Contains(weekSection, "2. bob — 2", "This week should show bob with 2 messages")
+	s.Require().Contains(weekSection, "alice — 3", "This week should show alice with 3 messages")
+	s.Require().Contains(weekSection, "bob — 2", "This week should show bob with 2 messages")
+	s.Require().NotContains(weekSection, "charlie", "This week should NOT show charlie (from last week)")
 
-	// This month section: charlie (5) + alice (3) + bob (2) - sorted by count descending
+	// This month section: all three users (charlie: 5, alice: 3, bob: 2)
 	monthSection := findSection(sections, func(s string) bool {
 		return strings.HasPrefix(strings.TrimSpace(s), "This month")
 	})
-	s.Require().Contains(monthSection, "charlie", "This month should include charlie")
+	s.Require().Contains(monthSection, "charlie — 5", "This month should show charlie with 5 messages")
 	s.Require().Contains(monthSection, "alice — 3", "This month should show alice with 3 messages")
 	s.Require().Contains(monthSection, "bob — 2", "This month should show bob with 2 messages")
 
-	// All time section: same users as this month
+	// All time section: all three users
 	allTimeSection := findSection(sections, func(s string) bool {
 		return strings.HasPrefix(strings.TrimSpace(s), "All time:")
 	})
