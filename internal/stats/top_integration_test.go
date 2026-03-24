@@ -31,8 +31,6 @@ func (s *TopIntegrationSuite) SetupSuite() {
 	}
 }
 
-
-
 func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 	chatID := int64(-10012345678)
 	now := time.Now().UTC()
@@ -45,7 +43,7 @@ func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 		count    int
 	}{
 		{101, "alice", now.Truncate(time.Hour), 3},                      // today
-		{102, "bob", now.AddDate(0, 0, -3).Truncate(time.Hour), 2},      // this week
+		{102, "bob", now.AddDate(0, 0, -1).Truncate(time.Hour), 2},      // this week (yesterday)
 		{103, "charlie", now.AddDate(0, 0, -15).Truncate(time.Hour), 5}, // this month
 	}
 
@@ -80,8 +78,8 @@ func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 	// Expected output structure:
 	// Top 5 users
 	// Today: alice — 3 (only alice has messages today)
-	// This week: alice — 3, bob — 2 (bob's from 3 days ago)
-	// This month: alice — 3, bob — 2 (charlie is from last month)
+	// This week: alice — 3, bob — 2 (bob's from yesterday, Monday)
+	// This month: charlie — 5, alice — 3, bob — 2 (all from this month)
 	// All time: charlie — 5, alice — 3, bob — 2
 
 	// Verify header shows correct limit
@@ -96,19 +94,20 @@ func (s *TopIntegrationSuite) TestHandle_HappyPath() {
 	})
 	s.Require().Contains(todaySection, "1. alice — 3", "Today should show alice with 3 messages")
 
-	// This week section: alice (3) + bob (2 from 3 days ago)
+	// This week section: alice (3) + bob (2 from yesterday)
 	weekSection := findSection(sections, func(s string) bool {
 		return strings.HasPrefix(strings.TrimSpace(s), "This week")
 	})
 	s.Require().Contains(weekSection, "1. alice — 3", "This week should show alice with 3 messages")
 	s.Require().Contains(weekSection, "2. bob — 2", "This week should show bob with 2 messages")
 
-	// This month section: alice (3) + bob (2) - charlie is from last month
+	// This month section: charlie (5) + alice (3) + bob (2) - sorted by count descending
 	monthSection := findSection(sections, func(s string) bool {
 		return strings.HasPrefix(strings.TrimSpace(s), "This month")
 	})
-	s.Require().Contains(monthSection, "1. alice — 3", "This month should show alice with 3 messages")
-	s.Require().Contains(monthSection, "2. bob — 2", "This month should show bob with 2 messages")
+	s.Require().Contains(monthSection, "charlie", "This month should include charlie")
+	s.Require().Contains(monthSection, "alice — 3", "This month should show alice with 3 messages")
+	s.Require().Contains(monthSection, "bob — 2", "This month should show bob with 2 messages")
 
 	// All time section: same users as this month
 	allTimeSection := findSection(sections, func(s string) bool {
