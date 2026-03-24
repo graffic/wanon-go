@@ -225,3 +225,67 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func (s *IntegrationDBSuite) TestQuotesIntegration_SearchByText() {
+	db := s.DB
+
+	// Create quotes with different text
+	creator := map[string]interface{}{"id": 123, "first_name": "Creator"}
+	creatorJSON, _ := json.Marshal(creator)
+
+	quotes := []struct {
+		author string
+		text   string
+	}{
+		{"Alice", "Hello world from Paris"},
+		{"Bob", "Hello from London"},
+		{"Charlie", "Goodbye world from Tokyo"},
+	}
+
+	for _, q := range quotes {
+		message := map[string]interface{}{
+			"message_id": float64(1),
+			"from":       map[string]interface{}{"first_name": q.author},
+			"date":       float64(1609459100),
+			"text":       q.text,
+		}
+		messageJSON, _ := json.Marshal(message)
+
+		quote := Quote{
+			Creator: datatypes.JSON(creatorJSON),
+			ChatID:  -100123,
+			Entries: []QuoteEntry{
+				{Order: 0, Message: datatypes.JSON(messageJSON)},
+			},
+		}
+		s.Require().NoError(db.Create(&quote).Error)
+	}
+
+	// Create rquote handler
+	rQuote := NewRQuoteHandler(nil, db, nil)
+
+	// Test SearchByText returns a matching quote
+	searchResult, err := rQuote.store.SearchByText(context.Background(), -100123, "Paris")
+	s.Require().NoError(err)
+	s.Require().NotNil(searchResult)
+
+	rendered, err := rQuote.renderer.RenderWithDate(searchResult)
+	s.Require().NoError(err)
+	s.Assert().Contains(rendered, "Paris")
+	s.Assert().Contains(rendered, "Alice")
+
+	// Test SearchByText with no matches
+	noResult, err := rQuote.store.SearchByText(context.Background(), -100123, "xyz123")
+	s.Require().NoError(err)
+	s.Assert().Nil(noResult)
+
+	// Test SearchByText with multiple matches (should return one randomly)
+	searchResult2, err := rQuote.store.SearchByText(context.Background(), -100123, "Hello")
+	s.Require().NoError(err)
+	s.Require().NotNil(searchResult2)
+
+	rendered2, err := rQuote.renderer.RenderWithDate(searchResult2)
+	s.Require().NoError(err)
+	// Should contain "Hello" and either Alice or Bob
+	s.Assert().Contains(rendered2, "Hello")
+}

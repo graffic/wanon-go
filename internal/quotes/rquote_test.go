@@ -34,7 +34,7 @@ func TestRQuoteHandler_Command(t *testing.T) {
 func TestRQuoteHandler_Description(t *testing.T) {
 	handler := NewRQuoteHandler(nil, nil, nil)
 
-	assert.Equal(t, "Get a random quote from this chat", handler.Description())
+	assert.Equal(t, "Get a random quote from this chat. Usage: /rquote [search text]", handler.Description())
 }
 
 func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_NoQuotes() {

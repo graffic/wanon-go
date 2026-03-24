@@ -138,6 +138,33 @@ func (s *Store) CountForChat(ctx context.Context, chatID int64) (int64, error) {
 	return count, nil
 }
 
+// SearchByText searches for quotes containing text in their messages
+// Uses PostgreSQL pg_trgm extension for fast substring matching
+func (s *Store) SearchByText(ctx context.Context, chatID int64, query string) (*Quote, error) {
+	var quote Quote
+
+	// Use parameterized query to prevent SQL injection
+	// The ILIKE operator with % wildcards works with pg_trgm GIN index
+	err := s.db.WithContext(ctx).
+		Joins("JOIN quote_entry ON quote_entry.quote_id = quote.id").
+		Where("quote.chat_id = ?", chatID).
+		Where("quote_entry.message ->> 'text' ILIKE ?", "%"+query+"%").
+		Order("RANDOM()").
+		Preload("Entries", func(db *gorm.DB) *gorm.DB {
+			return db.Order("quote_entry.order ASC")
+		}).
+		First(&quote).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil // No matching quotes found
+		}
+		return nil, fmt.Errorf("failed to search quotes: %w", err)
+	}
+
+	return &quote, nil
+}
+
 // Delete deletes a quote and its entries (cascade delete handled by GORM constraint)
 func (s *Store) Delete(ctx context.Context, id uint) error {
 	if err := s.db.WithContext(ctx).Delete(&Quote{}, id).Error; err != nil {

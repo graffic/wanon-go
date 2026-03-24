@@ -1,6 +1,6 @@
 module github.com/graffic/wanon-go
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/go-telegram/bot v1.18.0
