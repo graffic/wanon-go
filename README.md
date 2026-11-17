@@ -79,7 +79,7 @@ cache:
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.27.4 or later
 - PostgreSQL 14+
 - Docker and Docker Compose (optional)
 
