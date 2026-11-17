@@ -2,8 +2,11 @@ package quotes
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -34,6 +37,7 @@ func NewRQuoteHandler(b internalBot.BotClient, db *gorm.DB, logger *slog.Logger)
 // Handle processes the /rquote command
 // This signature matches bot.HandlerFunc
 // Usage: /rquote - returns a random quote
+// Usage: /rquote <id> or /rquote #<id> - looks up a quote in this chat by ID
 // Usage: /rquote <search text> - returns a random quote containing the text
 func (h *RQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.Update) {
 	msg := update.Message
@@ -43,6 +47,10 @@ func (h *RQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.U
 
 	chatID := msg.Chat.ID
 	searchText := h.extractSearchText(msg.Text)
+	if utf8.RuneCountInString(searchText) > 200 {
+		h.Reply(ctx, chatID, "Search input must be at most 200 characters.")
+		return
+	}
 
 	if searchText != "" {
 		h.Logger.Info("executing /rquote search", "chat_id", chatID, "user_id", msg.From.ID, "query", searchText)
@@ -54,8 +62,11 @@ func (h *RQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.U
 	var err error
 
 	if searchText != "" {
-		// Search for quotes containing the text
-		quote, err = h.store.SearchByText(ctx, chatID, searchText)
+		quote, err = h.searchQuote(ctx, chatID, searchText)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			h.Reply(ctx, chatID, "Quote #"+strings.TrimPrefix(searchText, "#")+" not found in this chat.")
+			return
+		}
 		if err != nil {
 			h.Logger.Error("failed to search quotes", "error", err, "search_text", searchText)
 			return
@@ -97,6 +108,28 @@ func (h *RQuoteHandler) Handle(ctx context.Context, _ *bot.Bot, update *models.U
 	h.Reply(ctx, chatID, rendered)
 }
 
+// searchQuote looks up numeric input as a quote ID; other input uses text search.
+func (h *RQuoteHandler) searchQuote(ctx context.Context, chatID int64, searchText string) (*Quote, error) {
+	idText := strings.TrimPrefix(searchText, "#")
+	if idText == "" || strings.ContainsFunc(idText, func(r rune) bool { return r < '0' || r > '9' }) {
+		return h.store.SearchByText(ctx, chatID, searchText)
+	}
+
+	// Quote IDs are stored as PostgreSQL BIGINT, which is a signed 64-bit integer.
+	id, err := strconv.ParseUint(idText, 10, 63)
+	if err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	quote, err := h.store.GetByID(ctx, uint(id))
+	if err != nil {
+		return nil, err
+	}
+	if quote.ChatID != chatID {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return quote, nil
+}
+
 // extractSearchText extracts the search text from the command message
 // Returns empty string if no search text provided
 func (h *RQuoteHandler) extractSearchText(text string) string {
@@ -117,5 +150,5 @@ func (h *RQuoteHandler) Command() string {
 
 // Description returns the command description
 func (h *RQuoteHandler) Description() string {
-	return "Get a random quote from this chat. Usage: /rquote [search text]"
+	return "Get a quote from this chat. Usage: /rquote [quote ID, #ID, or search text]"
 }

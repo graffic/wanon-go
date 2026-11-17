@@ -159,7 +159,7 @@ createdb wanon_test
 | Command | Description |
 |---------|-------------|
 | `/addquote` | Reply to a message to save it as a quote |
-| `/rquote` | Get a random quote from the chat |
+| `/rquote [query]` | Get a random quote, look up a quote ID, or search quote text in the chat |
 
 ### Example Usage
 
@@ -170,6 +170,10 @@ createdb wanon_test
 2. **Getting a random quote:**
    - Send `/rquote` in the chat
    - The bot sends a random previously saved quote
+
+3. **Looking up a quote:**
+   - Send `/rquote 123` or `/rquote #123` to retrieve quote #123 from the current chat
+   - Send `/rquote some text` to get a random quote containing that text
 
 ## Architecture
 

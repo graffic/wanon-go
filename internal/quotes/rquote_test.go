@@ -4,14 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
+	"strings"
 	"testing"
 
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/graffic/wanon-go/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/datatypes"
 )
+
+type rQuoteBotClient struct {
+	sentMsg *bot.SendMessageParams
+}
+
+func (b *rQuoteBotClient) SendMessage(_ context.Context, params *bot.SendMessageParams) (*models.Message, error) {
+	b.sentMsg = params
+	return &models.Message{}, nil
+}
 
 type RQuoteDBSuite struct {
 	testutils.DBSuite
@@ -34,7 +45,103 @@ func TestRQuoteHandler_Command(t *testing.T) {
 func TestRQuoteHandler_Description(t *testing.T) {
 	handler := NewRQuoteHandler(nil, nil, nil)
 
-	assert.Equal(t, "Get a random quote from this chat. Usage: /rquote [search text]", handler.Description())
+	assert.Equal(t, "Get a quote from this chat. Usage: /rquote [quote ID, #ID, or search text]", handler.Description())
+}
+
+func (s *RQuoteDBSuite) storeSearchQuote(chatID int64, text string) *Quote {
+	message, err := json.Marshal(map[string]interface{}{
+		"text": text,
+		"from": map[string]interface{}{"first_name": "Author"},
+		"date": 1609459100,
+	})
+	s.Require().NoError(err)
+
+	quote, err := NewStore(s.DB).Store(context.Background(), StoreOptions{
+		ChatID:  chatID,
+		Creator: map[string]interface{}{"id": 123, "first_name": "Creator"},
+		Entries: []CacheEntry{{Message: datatypes.JSON(message)}},
+	})
+	s.Require().NoError(err)
+	return quote
+}
+
+func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_Search() {
+	chatID := int64(-100123)
+	quote := s.storeSearchQuote(chatID, "A quote without numbers")
+	otherChatQuote := s.storeSearchQuote(-100999, "Private quote")
+	missingID := otherChatQuote.ID + 1000000
+
+	// These text matches must never be returned for an ID lookup, even if the ID is missing.
+	s.storeSearchQuote(chatID, fmt.Sprintf(
+		"Numbers mentioned: %d #%d %d #%d %d #%d 0 #0 9223372036854775807 9223372036854775808 #9223372036854775808",
+		quote.ID, quote.ID, otherChatQuote.ID, otherChatQuote.ID, missingID, missingID,
+	))
+	textQuote := s.storeSearchQuote(chatID, "Hello WORLD, this happened in 2026. #tag. 9223372036854775808 reasons.")
+
+	renderer := NewRenderer()
+	renderedQuote, err := renderer.RenderWithDate(quote)
+	s.Require().NoError(err)
+	renderedTextQuote, err := renderer.RenderWithDate(textQuote)
+	s.Require().NoError(err)
+
+	maxText := strings.Repeat("x", 200)
+	maxUnicodeText := strings.Repeat("界", 200)
+	maxID := strings.Repeat("9", 200)
+	maxHashID := "#" + strings.Repeat("9", 199)
+	lengthError := "Search input must be at most 200 characters."
+
+	tests := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"number", fmt.Sprint(quote.ID), renderedQuote},
+		{"hash number", fmt.Sprintf("#%d", quote.ID), renderedQuote},
+		{"surrounding whitespace", fmt.Sprintf("  #%d  ", quote.ID), renderedQuote},
+		{"leading zeros", fmt.Sprintf("%06d", quote.ID), renderedQuote},
+		{"missing number", fmt.Sprint(missingID), fmt.Sprintf("Quote #%d not found in this chat.", missingID)},
+		{"missing hash number", fmt.Sprintf("#%d", missingID), fmt.Sprintf("Quote #%d not found in this chat.", missingID)},
+		{"another chat's number", fmt.Sprint(otherChatQuote.ID), fmt.Sprintf("Quote #%d not found in this chat.", otherChatQuote.ID)},
+		{"another chat's hash number", fmt.Sprintf("#%d", otherChatQuote.ID), fmt.Sprintf("Quote #%d not found in this chat.", otherChatQuote.ID)},
+		{"zero", "0", "Quote #0 not found in this chat."},
+		{"hash zero", "#0", "Quote #0 not found in this chat."},
+		{"maximum ID", "9223372036854775807", "Quote #9223372036854775807 not found in this chat."},
+		{"out of range ID", "9223372036854775808", "Quote #9223372036854775808 not found in this chat."},
+		{"out of range hash ID", "#9223372036854775808", "Quote #9223372036854775808 not found in this chat."},
+		{"case insensitive text", "world", renderedTextQuote},
+		{"text containing a number", "in 2026", renderedTextQuote},
+		{"text starting with a number", "2026.", renderedTextQuote},
+		{"text starting with a large number", "9223372036854775808 reasons", renderedTextQuote},
+		{"non-numeric hashtag", "#tag", renderedTextQuote},
+		{"no text matches", "does not exist", "No quotes found containing: does not exist"},
+		{"maximum text length", maxText, "No quotes found containing: " + maxText},
+		{"maximum Unicode length", maxUnicodeText, "No quotes found containing: " + maxUnicodeText},
+		{"maximum ID length", maxID, "Quote #" + maxID + " not found in this chat."},
+		{"maximum hash ID length", maxHashID, "Quote " + maxHashID + " not found in this chat."},
+		{"too long text", maxText + "x", lengthError},
+		{"too long Unicode text", maxUnicodeText + "界", lengthError},
+		{"too long ID", maxID + "9", lengthError},
+		{"too long hash ID", "#" + maxID, lengthError},
+		{"maximum Telegram command length", strings.Repeat("9", 4088), lengthError},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			client := &rQuoteBotClient{}
+			handler := NewRQuoteHandler(client, s.DB, nil)
+			handler.Handle(context.Background(), nil, &models.Update{
+				Message: &models.Message{
+					Chat: models.Chat{ID: chatID},
+					From: &models.User{ID: 123},
+					Text: "/rquote " + tt.query,
+				},
+			})
+
+			s.Require().NotNil(client.sentMsg)
+			s.Assert().Equal(chatID, client.sentMsg.ChatID)
+			s.Assert().Equal(tt.want, client.sentMsg.Text)
+		})
+	}
 }
 
 func (s *RQuoteDBSuite) TestRQuoteHandler_Handle_NoQuotes() {
